@@ -23,7 +23,7 @@ create index if not exists transactions_created_by_idx
 
 alter table public.transactions enable row level security;
 
--- SELECT: teachers see all; parents see only transactions whose student has parent_id = auth.uid().
+-- SELECT: teachers see all; parents see only transactions whose student has parent_id = (select auth.uid()).
 create policy "transactions_select_teacher_or_own_child"
   on public.transactions
   for select
@@ -31,11 +31,11 @@ create policy "transactions_select_teacher_or_own_child"
   using (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
     or exists (
       select 1 from public.students s
-      where s.id = transactions.student_id and s.parent_id = auth.uid()
+      where s.id = transactions.student_id and s.parent_id = (select auth.uid())
     )
   );
 
@@ -47,9 +47,9 @@ create policy "transactions_insert_teacher"
   with check (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
-    and created_by = auth.uid()
+    and created_by = (select auth.uid())
   );
 
 -- No UPDATE / DELETE policies for authenticated role.
@@ -69,9 +69,10 @@ create or replace function public.create_transaction(
 returns public.transactions
 language plpgsql
 security invoker
+set search_path = ''
 as $$
 declare
-  v_uid uuid := auth.uid();
+  v_uid uuid := (select auth.uid());
   v_role text;
   v_current_balance numeric(12, 0);
   v_row public.transactions;

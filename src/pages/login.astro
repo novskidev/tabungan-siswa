@@ -1,36 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { getSupabase, getCurrentUser } from '../lib/supabase';
+import { getCurrentUser } from '../lib/supabase';
 
 let error: string | null = null;
 let loading = false;
 
-if (Astro.request.method === 'POST') {
-  loading = true;
-  const form = await Astro.request.formData();
-  const email = String(form.get('email') ?? '').trim();
-  const password = String(form.get('password') ?? '');
-
-  if (!email || !password) {
-    error = 'Email dan password wajib diisi.';
-    loading = false;
-  } else {
-    const { client } = getSupabase(Astro);
-    const { error: signInError } = await client.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (signInError) {
-      error =
-        signInError.message.toLowerCase().includes('invalid login')
-          ? 'Email atau password salah.'
-          : 'Login gagal. Coba lagi.';
-      loading = false;
-    } else {
-      return Astro.redirect('/dashboard');
-    }
-  }
-}
+const err = Astro.url.searchParams.get('error');
+if (err === 'empty') error = 'Email dan password wajib diisi.';
+else if (err === 'bad-pass') error = 'Email atau password salah.';
+else if (err === 'auth-failed') error = 'Login gagal. Coba lagi.';
 
 const session = await getCurrentUser(Astro);
 if (session) return Astro.redirect('/dashboard');
@@ -43,7 +21,7 @@ if (session) return Astro.redirect('/dashboard');
       <p class="text-sm text-ink/60">Gunakan akun yang terdaftar.</p>
     </header>
 
-    <form method="POST" class="space-y-4 rounded-xl bg-brand-soft/60 p-6 shadow-sm">
+    <form method="POST" action="/api/auth/login" class="space-y-4 rounded-xl bg-brand-soft/60 p-6 shadow-sm">
       <label class="block text-sm">
         <span class="mb-1 block font-medium">Email / Username</span>
         <input

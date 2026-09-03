@@ -28,20 +28,29 @@ function readConfig(): { url: string; anonKey: string } {
   return { url, anonKey };
 }
 
+function getAccessToken(ctx: APIContext): string | null {
+  const m = (ctx.request.headers.get('cookie') ?? '').match(/(?:^|; )sb-access-token=([^;]*)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 export function getSupabase(ctx: APIContext): AppSupabase {
   const { url, anonKey } = readConfig();
-  const cookieHeader = ctx.request.headers.get('cookie') ?? '';
+  const token = getAccessToken(ctx);
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const client = createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { cookie: cookieHeader } },
+    global: { headers },
   });
   return { client, url, anonKey };
 }
 
 export async function getCurrentUser(ctx: APIContext) {
+  const token = getAccessToken(ctx);
+  if (!token) return null;
   const { client } = getSupabase(ctx);
-  const { data } = await client.auth.getUser();
-  return data.user;
+  const { data } = await client.auth.getUser(token);
+  return data.user ?? null;
 }
 
 export async function getCurrentProfile(ctx: APIContext): Promise<Profile | null> {

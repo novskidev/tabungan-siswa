@@ -24,16 +24,16 @@ alter table public.students enable row level security;
 
 -- SELECT:
 --  - teacher sees all
---  - parent sees only rows where parent_id = auth.uid()
+--  - parent sees only rows where parent_id = (select auth.uid())
 create policy "students_select_teacher_or_own_parent"
   on public.students
   for select
   to authenticated
   using (
-    parent_id = auth.uid()
+    parent_id = (select auth.uid())
     or exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -45,7 +45,7 @@ create policy "students_insert_teacher"
   with check (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -57,13 +57,13 @@ create policy "students_update_teacher"
   using (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   )
   with check (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -75,7 +75,7 @@ create policy "students_delete_teacher"
   using (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -83,6 +83,7 @@ create policy "students_delete_teacher"
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();

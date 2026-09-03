@@ -1,5 +1,8 @@
--- Sprint 1: extend profiles RLS so teachers can read all profiles.
--- Sprint 0 had self-only SELECT; Sprint 1 needs parent lookup for assignment.
+-- Sprint 1: extend profiles RLS.
+-- NOTE: the original version used `EXISTS (SELECT FROM profiles ...)` inside the
+-- policy, which recurses into the same policy (infinite loop → login redirect
+-- loop). Replaced with self-only SELECT; teacher reads all profiles via the
+-- teacher CRUD path, not a recursive policy.
 
 drop policy if exists "profiles_select_own" on public.profiles;
 
@@ -7,10 +10,4 @@ create policy "profiles_select_self_or_teacher"
   on public.profiles
   for select
   to authenticated
-  using (
-    auth.uid() = id
-    or exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
-    )
-  );
+  using ((select auth.uid()) = id);

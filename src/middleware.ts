@@ -20,6 +20,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     path === '/dashboard' ||
     path.startsWith('/_astro/') ||
     path.startsWith('/favicon') ||
+    path === '/api/auth/login' ||
     path === '/api/auth/logout'
   ) {
     return next();

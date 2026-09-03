@@ -16,7 +16,7 @@ create policy "classes_insert_teacher"
   with check (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -27,13 +27,13 @@ create policy "classes_update_teacher"
   using (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   )
   with check (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );
 
@@ -44,6 +44,6 @@ create policy "classes_delete_teacher"
   using (
     exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'teacher'
+      where p.id = (select auth.uid()) and p.role = 'teacher'
     )
   );

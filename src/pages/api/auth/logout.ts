@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
-import { getSupabase } from '../../../lib/supabase';
+
 
 export const POST: APIRoute = async (ctx) => {
-  const { client } = getSupabase(ctx);
-  await client.auth.signOut();
+  ctx.cookies.delete('sb-access-token', { path: '/' });
+  ctx.cookies.delete('sb-refresh-token', { path: '/' });
   return ctx.redirect('/login');
 };

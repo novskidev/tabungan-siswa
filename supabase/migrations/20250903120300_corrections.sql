@@ -44,9 +44,10 @@ create or replace function public.correct_transaction(
 returns public.transactions
 language plpgsql
 security invoker
+set search_path = ''
 as $$
 declare
-  v_uid uuid := auth.uid();
+  v_uid uuid := (select auth.uid());
   v_role text;
   v_original public.transactions;
   v_existing uuid;

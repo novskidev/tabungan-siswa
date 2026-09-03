@@ -15,15 +15,15 @@ create policy "profiles_select_own"
   on public.profiles
   for select
   to authenticated
-  using (auth.uid() = id);
+  using ((select auth.uid()) = id);
 
 -- Update: a logged-in user can only update their own profile.
 create policy "profiles_update_own"
   on public.profiles
   for update
   to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+  using ((select auth.uid()) = id)
+  with check ((select auth.uid()) = id);
 
 -- Insert is intentionally restricted to the service role / trigger flows.
 -- No insert policy for the `authenticated` role keeps user self-signup locked down
