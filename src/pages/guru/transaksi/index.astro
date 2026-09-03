@@ -1,0 +1,212 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Nav from '../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimeShort,
+  groupByDay,
+  APP_TZ,
+} from '../../../lib/transactions';
+import { asStudent, type TransactionRow } from '../../../types/database';
+
+await requireRole(Astro, 'teacher');
+const { client } = getSupabase(Astro);
+
+const url = new URL(Astro.request.url);
+const dateFilter = url.searchParams.get('tanggal') ?? '';
+const studentFilter = url.searchParams.get('siswa') ?? '';
+const typeFilter = (url.searchParams.get('jenis') ?? '') as
+  | ''
+  | 'deposit'
+  | 'withdrawal';
+const correctedId = url.searchParams.get('corrected') ?? '';
+
+const students: { id: string; full_name: string; nis: string }[] = (
+  (
+    await client
+      .from('students')
+      .select('id, full_name, nis')
+      .order('full_name')
+  ).data ?? []
+) as { id: string; full_name: string; nis: string }[];
+
+let dateStart: Date | null = null;
+let dateEnd: Date | null = null;
+// ponytail: SSR runs in UTC on Cloudflare Workers. We compute "today" and
+// "yesterday" as YYYY-MM-DD strings in Asia/Jakarta, then convert to UTC
+// ISO bounds. Keeps the filter aligned with the rest of the app's timezone.
+if (dateFilter === 'today' || dateFilter === 'yesterday') {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const offsetDays = dateFilter === 'yesterday' ? -1 : 0;
+  const baseDate = new Date();
+  const baseKey = fmt.format(baseDate);
+  const [y, m, d] = baseKey.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1, d + offsetDays));
+  const targetKey = fmt.format(target);
+  const [ty, tm, td] = targetKey.split('-').map(Number);
+  dateStart = new Date(Date.UTC(ty, tm - 1, td, -7));
+  dateEnd = new Date(Date.UTC(ty, tm - 1, td + 1, -7));
+}
+
+let query = client
+  .from('transactions')
+  .select(
+    'id, student_id, type, amount, note, created_by, created_at, correction_of, correction_reason, corrected_by, corrected_at, student:students(id, full_name, nis)',
+  )
+  .order('created_at', { ascending: false })
+  .limit(500);
+
+if (dateStart) query = query.gte('created_at', dateStart.toISOString());
+if (dateEnd) query = query.lt('created_at', dateEnd.toISOString());
+if (studentFilter) query = query.eq('student_id', studentFilter);
+if (typeFilter) query = query.eq('type', typeFilter);
+
+const { data: txsRaw } = await query;
+const txs: TransactionRow[] = (txsRaw as unknown as TransactionRow[] | null) ?? [];
+
+const groups: { key: string; label: string; items: TransactionRow[] }[] = groupByDay(txs);
+
+const correctedSet = new Set(
+  txs.filter((t) => t.correction_of).map((t) => t.correction_of as string),
+);
+---
+
+<Layout title="Transaksi — Tabungan SDN Klagen 1" wide>
+  <Nav role="teacher" current="transaksi" />
+
+  <header class="mb-4">
+    <h1 class="text-xl font-semibold">Transaksi</h1>
+  </header>
+
+  {correctedId && (
+    <div
+      role="status"
+      class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+    >
+      Koreksi berhasil disimpan. Transaksi asli tetap ada untuk audit.
+    </div>
+  )}
+
+  <form method="GET" class="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+    <label class="block text-sm">
+      <span class="mb-1 block text-xs text-ink/60">Tanggal</span>
+      <select
+        name="tanggal"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+      >
+        <option value="" selected={dateFilter === ''}>Semua Tanggal</option>
+        <option value="today" selected={dateFilter === 'today'}>Hari Ini</option>
+        <option value="yesterday" selected={dateFilter === 'yesterday'}>Kemarin</option>
+      </select>
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block text-xs text-ink/60">Siswa</span>
+      <select
+        name="siswa"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+      >
+        <option value="" selected={studentFilter === ''}>Semua Siswa</option>
+        {students.map((s) => (
+          <option value={s.id} selected={studentFilter === s.id}>
+            {s.full_name}
+          </option>
+        ))}
+      </select>
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block text-xs text-ink/60">Jenis</span>
+      <select
+        name="jenis"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+      >
+        <option value="" selected={typeFilter === ''}>Semua</option>
+        <option value="deposit" selected={typeFilter === 'deposit'}>Setoran</option>
+        <option value="withdrawal" selected={typeFilter === 'withdrawal'}>
+          Penarikan
+        </option>
+      </select>
+    </label>
+    <div class="sm:col-span-3 flex gap-2">
+      <button class="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90">
+        Terapkan
+      </button>
+      <a href="/guru/transaksi" class="rounded-md bg-ink/5 px-4 py-2 text-sm font-medium hover:bg-ink/10">
+        Reset
+      </a>
+    </div>
+  </form>
+
+  {groups.length > 0 ? (
+    <div class="space-y-4">
+      {groups.map((g) => (
+        <div>
+          <p class="mb-2 text-xs font-medium uppercase tracking-wide text-ink/50">
+            {g.label}
+          </p>
+          <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+            {g.items.map((t) => {
+              const isCorrection = t.correction_of !== null;
+              return (
+                <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <a
+                        href={`/guru/siswa/${t.student_id}`}
+                        class="block truncate font-medium hover:underline"
+                      >
+                        {asStudent(t.student)?.full_name ?? '—'}
+                      </a>
+                      {isCorrection && (
+                        <span class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                          Koreksi
+                        </span>
+                      )}
+                    </div>
+                    <p class="text-xs text-ink/50">{formatTimeShort(t.created_at)}</p>
+                    {t.note && (
+                      <p class="mt-0.5 truncate text-xs text-ink/60">"{t.note}"</p>
+                    )}
+                  </div>
+                  <div class="flex shrink-0 flex-col items-end gap-1">
+                    <p
+                      class:list={[
+                        'font-medium',
+                        t.type === 'deposit' ? 'text-green-700' : 'text-red-700',
+                      ]}
+                    >
+                      {t.type === 'deposit' ? '+' : '−'}
+                      {formatRupiah(Number(t.amount))}
+                    </p>
+                    {!isCorrection && !correctedSet.has(t.id) && (
+                      <a
+                        href={`/guru/transaksi/${t.id}/koreksi`}
+                        class="text-xs text-brand hover:underline"
+                      >
+                        Koreksi
+                      </a>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+      Tidak ada transaksi yang cocok.
+    </p>
+  )}
+
+  <p class="mt-4 text-xs text-ink/50">
+    Transaksi historis tidak dapat dihapus. Koreksi menggunakan transaksi
+    kompensasi yang menandai transaksi asli sebagai telah dikoreksi.
+  </p>
+</Layout>

@@ -1,0 +1,208 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import Nav from '../../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimestamp,
+  correctTransaction,
+  getStudentBalance,
+} from '../../../../lib/transactions';
+import {
+  asStudent,
+  type TransactionRow,
+} from '../../../../types/database';
+
+await requireRole(Astro, 'teacher');
+const { client } = getSupabase(Astro);
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/guru/transaksi');
+
+let errorMessage: string | null = null;
+let existingReason = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const reason = String(form.get('reason') ?? '').trim();
+  existingReason = reason;
+  if (!reason) {
+    errorMessage = 'Alasan koreksi wajib diisi.';
+  } else {
+    const result = await correctTransaction(Astro, {
+      originalId: id,
+      reason,
+    });
+    if (result.ok) {
+      return Astro.redirect(
+        `/guru/transaksi?corrected=${id}`,
+      );
+    }
+    errorMessage = result.message;
+  }
+}
+
+const { data: txRaw } = await client
+  .from('transactions')
+  .select(
+    'id, student_id, type, amount, note, created_by, created_at, correction_of, correction_reason, corrected_by, corrected_at, student:students(id, full_name, nis)',
+  )
+  .eq('id', id)
+  .maybeSingle();
+
+const tx = txRaw as unknown as TransactionRow | null;
+if (!tx) {
+  return Astro.redirect('/guru/transaksi');
+}
+
+const { data: existingCorrectionRaw } = await client
+  .from('transactions')
+  .select('id, correction_reason, corrected_by, corrected_at')
+  .eq('correction_of', id)
+  .maybeSingle();
+const existingCorrection = existingCorrectionRaw as
+  | {
+      id: string;
+      correction_reason: string;
+      corrected_by: string;
+      corrected_at: string;
+    }
+  | null;
+
+const balance = await getStudentBalance(Astro, tx.student_id);
+const studentName = asStudent(tx.student)?.full_name ?? '—';
+---
+
+<Layout title="Koreksi Transaksi — Tabungan SDN Klagen 1" wide>
+  <Nav role="teacher" current="transaksi" />
+
+  <header class="mb-4">
+    <a href="/guru/transaksi" class="text-sm text-ink/60 underline hover:text-ink">
+      ← Kembali ke Transaksi
+    </a>
+  </header>
+
+  <section class="mx-auto max-w-xl space-y-5">
+    <div>
+      <h1 class="text-xl font-semibold">Koreksi Transaksi</h1>
+      <p class="mt-1 text-sm text-ink/60">
+        Koreksi tidak menghapus transaksi asli. Saldo akan disesuaikan melalui
+        transaksi baru dengan arah berlawanan.
+      </p>
+    </div>
+
+    {errorMessage && (
+      <div
+        role="alert"
+        class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+      >
+        {errorMessage}
+      </div>
+    )}
+
+    {existingCorrection ? (
+      <div class="rounded-xl bg-ink/5 p-5 text-sm">
+        <p class="font-medium">Transaksi ini sudah pernah dikoreksi.</p>
+        <p class="mt-2 text-ink/70">
+          Alasan: {existingCorrection.correction_reason}
+        </p>
+        <p class="mt-1 text-xs text-ink/50">
+          {formatTimestamp(existingCorrection.corrected_at)}
+        </p>
+      </div>
+    ) : (
+      <form
+        method="POST"
+        class="space-y-5 rounded-xl bg-white p-5 shadow-sm"
+        id="correction-form"
+      >
+        <div class="rounded-lg bg-brand-soft/40 p-4 text-sm">
+          <p class="font-medium">{studentName}</p>
+          <p class="mt-1 text-ink/70">
+            {tx.type === 'deposit' ? 'Setoran' : 'Penarikan'}
+            {' '}
+            <span class:list={['font-semibold', tx.type === 'deposit' ? 'text-green-700' : 'text-red-700']}>
+              {tx.type === 'deposit' ? '+' : '−'}{formatRupiah(Number(tx.amount))}
+            </span>
+          </p>
+          <p class="mt-1 text-xs text-ink/60">
+            {formatTimestamp(tx.created_at)}
+          </p>
+          {tx.note && (
+            <p class="mt-1 text-xs text-ink/70">"{tx.note}"</p>
+          )}
+          <p class="mt-2 text-xs text-ink/60">
+            Saldo saat ini: {formatRupiah(balance.balance)}
+          </p>
+        </div>
+
+        <label class="block">
+          <span class="block text-sm font-medium">Alasan koreksi</span>
+          <textarea
+            name="reason"
+            required
+            rows="3"
+            minlength="3"
+            maxlength="500"
+            placeholder="Misalnya: salah nominal, seharusnya Rp5.000"
+            class="mt-1 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            >{existingReason}</textarea
+          >
+          <span class="mt-1 block text-xs text-ink/50">
+            Wajib diisi agar koreksi dapat ditelusuri.
+          </span>
+        </label>
+
+        <div class="rounded-lg bg-ink/5 p-3 text-xs text-ink/70">
+          <p>
+            Tindakan ini akan membuat transaksi baru
+            {' '}<span class="font-medium">{tx.type === 'deposit' ? 'penarikan' : 'setoran'}</span>
+            {' '}sebesar {formatRupiah(Number(tx.amount))} sebagai koreksi.
+          </p>
+        </div>
+
+        <div class="flex gap-2">
+          <a
+            href={`/guru/siswa/${tx.student_id}`}
+            class="flex-1 rounded-md bg-ink/5 px-4 py-2 text-center text-sm font-medium hover:bg-ink/10"
+          >
+            Batal
+          </a>
+          <button
+            id="confirm-btn"
+            class="flex-1 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Koreksi Transaksi
+          </button>
+        </div>
+      </form>
+    )}
+  </section>
+</Layout>
+
+<script>
+  (function () {
+    const form = document.getElementById('correction-form') as HTMLFormElement | null;
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+      const btn = document.getElementById('confirm-btn') as HTMLButtonElement | null;
+      const reason = (form.elements.namedItem('reason') as HTMLTextAreaElement | null)?.value?.trim() ?? '';
+      if (!reason) return;
+      const ok = window.confirm(
+        'Koreksi transaksi ini?\n\nAlasan:\n' + reason + '\n\nKoreksi tidak dapat dibatalkan.',
+      );
+      if (!ok) {
+        e.preventDefault();
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Koreksi Transaksi';
+        }
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Memproses...';
+      }
+    });
+  })();
+</script>

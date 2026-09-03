@@ -1,0 +1,158 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import Nav from '../../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimeShort,
+  getStudentBalance,
+  getStudentTransactions,
+  groupByDay,
+} from '../../../../lib/transactions';
+import { asClass, type StudentWithRelations, type TransactionRow } from '../../../../types/database';
+
+await requireRole(Astro, 'parent');
+const { client } = getSupabase(Astro);
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/orangtua');
+
+interface ChildRow {
+  id: string;
+  full_name: string;
+  nis: string;
+  class_id: string;
+  class: StudentWithRelations['class'];
+}
+
+let loadError: string | null = null;
+let student: ChildRow | null = null;
+let balance: { totalDeposit: number; totalWithdrawal: number; balance: number } = {
+  totalDeposit: 0,
+  totalWithdrawal: 0,
+  balance: 0,
+};
+let groups: { key: string; label: string; items: TransactionRow[] }[] = [];
+
+try {
+  const { data } = await client
+    .from('students')
+    .select(
+      'id, nis, full_name, class_id, parent_id, created_at, updated_at, class:classes(id, name, academic_year)',
+    )
+    .eq('id', id)
+    .maybeSingle();
+
+  // RLS returns null for non-owned students. Redirect silently (no leak).
+  if (!data) return Astro.redirect('/orangtua');
+
+  student = data as unknown as ChildRow;
+  balance = await getStudentBalance(Astro, id);
+  const txs = await getStudentTransactions(client, id, 100);
+  groups = groupByDay(txs);
+} catch {
+  loadError = 'Data belum dapat dimuat. Silakan coba lagi.';
+}
+---
+
+<Layout title={`${student?.full_name ?? 'Anak'} — Tabungan SDN Klagen 1`}>
+  <Nav role="parent" current="dashboard" />
+
+  {loadError && (
+    <div class="mb-4 rounded-xl bg-red-100 p-5 text-center text-sm text-red-900 shadow-sm">
+      <p>{loadError}</p>
+      <a href="/orangtua" class="mt-2 inline-block rounded-md bg-red-900 px-3 py-1.5 text-sm font-medium text-white">
+        Coba Lagi
+      </a>
+    </div>
+  )}
+
+  {!loadError && student && (
+    <article class="space-y-5">
+      <header>
+        <a href="/orangtua" class="text-sm text-ink/60 underline hover:text-ink">
+          ← Kembali
+        </a>
+        <h1 class="mt-1 text-xl font-semibold">{student.full_name}</h1>
+        <p class="text-sm text-ink/60">
+          Kelas {asClass(student.class)?.name ?? '—'}
+        </p>
+      </header>
+
+      <section class="rounded-xl bg-brand-soft/60 p-5 shadow-sm">
+        <p class="text-sm text-ink/60">Saldo Tabungan</p>
+        <p class="mt-1 text-3xl font-semibold">{formatRupiah(balance.balance)}</p>
+      </section>
+
+      <section class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl bg-white p-4 shadow-sm">
+          <p class="text-xs text-ink/60">Setoran</p>
+          <p class="mt-1 text-lg font-semibold text-green-700">
+            {formatRupiah(balance.totalDeposit)}
+          </p>
+        </div>
+        <div class="rounded-xl bg-white p-4 shadow-sm">
+          <p class="text-xs text-ink/60">Penarikan</p>
+          <p class="mt-1 text-lg font-semibold text-red-700">
+            {formatRupiah(balance.totalWithdrawal)}
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="mb-3 text-sm font-medium text-ink/60">Riwayat Transaksi</h2>
+        {groups.length > 0 ? (
+          <div class="space-y-4">
+            {groups.map((g) => (
+              <div>
+                <p class="mb-2 text-xs font-medium uppercase tracking-wide text-ink/50">
+                  {g.label}
+                </p>
+                <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+                  {g.items.map((t) => {
+                    const isCorrection = t.correction_of !== null;
+                    return (
+                      <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <div class="min-w-0">
+                          <p class="text-xs text-ink/50">{formatTimeShort(t.created_at)}</p>
+                          <p class="mt-0.5 flex items-center gap-2">
+                            <span>
+                              {isCorrection
+                                ? 'Koreksi'
+                                : t.type === 'deposit'
+                                  ? 'Setoran'
+                                  : 'Penarikan'}
+                            </span>
+                          </p>
+                          {t.note && (
+                            <p class="mt-0.5 truncate text-xs text-ink/60">"{t.note}"</p>
+                          )}
+                        </div>
+                        <p
+                          class:list={[
+                            'shrink-0 font-medium',
+                            t.type === 'deposit' ? 'text-green-700' : 'text-red-700',
+                          ]}
+                        >
+                          {t.type === 'deposit' ? '+' : '−'}
+                          {formatRupiah(Number(t.amount))}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+            Belum ada transaksi tabungan.
+            <span class="mt-1 block text-xs text-ink/50">
+              Riwayat tabungan akan muncul setelah guru mencatat setoran.
+            </span>
+          </p>
+        )}
+      </section>
+    </article>
+  )}
+</Layout>

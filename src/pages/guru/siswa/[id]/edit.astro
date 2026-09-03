@@ -1,0 +1,158 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import Nav from '../../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../../lib/supabase';
+
+await requireRole(Astro, 'teacher');
+const { client } = getSupabase(Astro);
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/guru/siswa');
+let error: string | null = null;
+
+const { data: student, error: fetchError } = await client
+  .from('students')
+  .select('id, nis, full_name, class_id, parent_id')
+  .eq('id', id)
+  .single();
+
+if (fetchError || !student) {
+  return Astro.redirect('/guru/siswa');
+}
+
+let form = {
+  full_name: student.full_name,
+  nis: student.nis,
+  class_id: student.class_id,
+  parent_id: student.parent_id ?? '',
+};
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  form = {
+    full_name: String(data.get('full_name') ?? '').trim(),
+    nis: String(data.get('nis') ?? '').trim(),
+    class_id: String(data.get('class_id') ?? '').trim(),
+    parent_id: String(data.get('parent_id') ?? '').trim(),
+  };
+
+  if (!form.full_name) error = 'Nama wajib diisi.';
+  else if (!form.nis) error = 'NIS wajib diisi.';
+  else if (!form.class_id) error = 'Kelas wajib dipilih.';
+  else {
+    const { error: updateError } = await client
+      .from('students')
+      .update({
+        full_name: form.full_name,
+        nis: form.nis,
+        class_id: form.class_id,
+        parent_id: form.parent_id || null,
+      })
+      .eq('id', id);
+    if (updateError) {
+      if (updateError.code === '23505') {
+        error = 'NIS sudah dipakai siswa lain.';
+      } else {
+        error = 'Gagal memperbarui siswa. Silakan coba lagi.';
+      }
+    } else {
+      return Astro.redirect(`/guru/siswa/${id}`);
+    }
+  }
+}
+
+const { data: classes } = await client
+  .from('classes')
+  .select('id, name, academic_year')
+  .order('name');
+
+const { data: parents } = await client
+  .from('profiles')
+  .select('id, full_name')
+  .eq('role', 'parent')
+  .order('full_name');
+---
+
+<Layout title="Edit Siswa — Tabungan SDN Klagen 1" wide>
+  <Nav role="teacher" current="siswa" />
+
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Edit Siswa</h1>
+    <a
+      href={`/guru/siswa/${id}`}
+      class="text-sm text-ink/60 underline hover:text-ink"
+    >
+      Kembali
+    </a>
+  </header>
+
+  {error && (
+    <div role="alert" class="mb-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+      {error}
+    </div>
+  )}
+
+  <form method="POST" class="space-y-4 rounded-xl bg-brand-soft/40 p-5 shadow-sm">
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Nama siswa</span>
+      <input
+        name="full_name"
+        value={form.full_name}
+        required
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">NIS</span>
+      <input
+        name="nis"
+        value={form.nis}
+        required
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Kelas</span>
+      <select
+        name="class_id"
+        required
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      >
+        <option value="">Pilih kelas</option>
+        {
+          classes?.map((c) => (
+            <option value={c.id} selected={form.class_id === c.id}>
+              {c.name} ({c.academic_year})
+            </option>
+          ))
+        }
+      </select>
+    </label>
+
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Orang tua</span>
+      <select
+        name="parent_id"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      >
+        <option value="">Belum ada</option>
+        {
+          parents?.map((p) => (
+            <option value={p.id} selected={form.parent_id === p.id}>
+              {p.full_name}
+            </option>
+          ))
+        }
+      </select>
+    </label>
+
+    <button
+      type="submit"
+      class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90"
+    >
+      Simpan Perubahan
+    </button>
+  </form>
+</Layout>

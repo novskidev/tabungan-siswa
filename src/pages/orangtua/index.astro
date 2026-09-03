@@ -1,0 +1,97 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Nav from '../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../lib/supabase';
+import { formatRupiah, getStudentBalance } from '../../lib/transactions';
+import { asClass, type StudentWithRelations } from '../../types/database';
+
+const profile = await requireRole(Astro, 'parent');
+const { client } = getSupabase(Astro);
+
+interface ChildRow {
+  id: string;
+  full_name: string;
+  nis: string;
+  class_id: string;
+  class: StudentWithRelations['class'];
+}
+
+let loadError: string | null = null;
+let children: (ChildRow & { balance: number })[] = [];
+
+try {
+  const { data: studentsRaw, error } = await client
+    .from('students')
+    .select(
+      'id, nis, full_name, class_id, parent_id, created_at, updated_at, class:classes(id, name, academic_year)',
+    )
+    .order('full_name');
+
+  if (error) {
+    loadError = 'Data belum dapat dimuat. Silakan coba lagi.';
+  } else {
+    const base = (studentsRaw as unknown as ChildRow[] | null) ?? [];
+    children = await Promise.all(
+      base.map(async (s) => {
+        const b = await getStudentBalance(Astro, s.id);
+        return { ...s, balance: b.balance };
+      }),
+    );
+  }
+} catch {
+  loadError = 'Data belum dapat dimuat. Silakan coba lagi.';
+}
+---
+
+<Layout title="Beranda — Tabungan SDN Klagen 1">
+  <Nav role="parent" current="dashboard" />
+
+  <header class="mb-6">
+    <p class="text-sm text-ink/60">Selamat datang,</p>
+    <h1 class="text-xl font-semibold">{profile.full_name}</h1>
+  </header>
+
+  {loadError && (
+    <div class="mb-4 rounded-xl bg-red-100 p-5 text-center text-sm text-red-900 shadow-sm">
+      <p>{loadError}</p>
+      <a href="/orangtua" class="mt-2 inline-block rounded-md bg-red-900 px-3 py-1.5 text-sm font-medium text-white">
+        Coba Lagi
+      </a>
+    </div>
+  )}
+
+  {!loadError && (
+    <section>
+      <h2 class="mb-3 text-sm font-medium text-ink/60">Anak Anda</h2>
+      {children.length > 0 ? (
+        <ul class="space-y-3">
+          {children.map((s) => (
+            <li class="rounded-xl bg-white p-5 shadow-sm">
+              <p class="font-medium">{s.full_name}</p>
+              <p class="text-xs text-ink/50">
+                Kelas {asClass(s.class)?.name ?? '—'} · NIS {s.nis}
+              </p>
+              <div class="mt-4 rounded-md bg-brand-soft/50 px-3 py-3">
+                <p class="text-xs text-ink/60">Saldo</p>
+                <p class="mt-1 text-2xl font-semibold">{formatRupiah(s.balance)}</p>
+                <a
+                  href={`/orangtua/anak/${s.id}`}
+                  class="mt-3 inline-block w-full rounded-md bg-brand py-2 text-center text-sm font-medium text-white hover:bg-brand/90"
+                >
+                  Lihat Tabungan
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+          <p>Belum ada data anak yang terhubung.</p>
+          <p class="mt-1 text-xs text-ink/50">
+            Silakan hubungi guru untuk menghubungkan akun Anda dengan data siswa.
+          </p>
+        </div>
+      )}
+    </section>
+  )}
+</Layout>

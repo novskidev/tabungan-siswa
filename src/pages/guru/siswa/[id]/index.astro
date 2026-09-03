@@ -1,0 +1,203 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import Nav from '../../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimestamp,
+  getStudentBalance,
+  getStudentTransactions,
+} from '../../../../lib/transactions';
+import {
+  asClass,
+  asParent,
+  asCreator,
+  type StudentWithRelations,
+} from '../../../../types/database';
+
+await requireRole(Astro, 'teacher');
+const { client } = getSupabase(Astro);
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/guru/siswa');
+
+const { data: studentRaw, error } = await client
+  .from('students')
+  .select(
+    'id, nis, full_name, class_id, parent_id, is_active, created_at, updated_at, class:classes(id, name, academic_year), parent:profiles!students_parent_id_fkey(id, full_name)',
+  )
+  .eq('id', id)
+  .maybeSingle();
+
+const student = studentRaw as unknown as StudentWithRelations | { is_active: boolean } & StudentWithRelations | null;
+
+if (error || !student) {
+  return Astro.redirect('/guru/siswa');
+}
+
+const isActive = (student as { is_active: boolean }).is_active;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (action === 'toggle_active') {
+    await client
+      .from('students')
+      .update({ is_active: !isActive } as Record<string, unknown>)
+      .eq('id', id);
+    return Astro.redirect(`/guru/siswa/${id}`);
+  }
+}
+
+const balance = await getStudentBalance(Astro, id);
+const transactions = await getStudentTransactions(client, id, 100);
+
+// Index correction rows by id for quick label rendering.
+const correctionIds = transactions
+  .map((t) => t.correction_of)
+  .filter((v): v is string => Boolean(v));
+const correctedSet = new Set(correctionIds);
+---
+
+<Layout title={`${student.full_name} — Tabungan SDN Klagen 1`} wide>
+  <Nav role="teacher" current="siswa" />
+
+  <header class="mb-4 flex items-center justify-between">
+    <a href="/guru/siswa" class="text-sm text-ink/60 underline hover:text-ink">
+      ← Kembali
+    </a>
+    <div class="flex gap-2">
+      <form method="POST" class="inline">
+        <input type="hidden" name="action" value="toggle_active" />
+        <button
+          class="rounded-md bg-ink/5 px-3 py-1.5 text-sm hover:bg-ink/10"
+        >
+          {isActive ? 'Nonaktifkan' : 'Aktifkan'}
+        </button>
+      </form>
+      <a
+        href={`/guru/siswa/${student.id}/edit`}
+        class="rounded-md bg-ink/5 px-3 py-1.5 text-sm hover:bg-ink/10"
+      >
+        Edit
+      </a>
+    </div>
+  </header>
+
+  <section class="space-y-5">
+    <div>
+      <h1 class="text-2xl font-semibold">{student.full_name}</h1>
+      <p class="text-sm text-ink/60">
+        Kelas {asClass(student.class)?.name ?? '—'} · NIS {student.nis}
+        {isActive ? '' : ' · Tidak Aktif'}
+      </p>
+    </div>
+
+    <div class="grid grid-cols-3 gap-2">
+      <div class="rounded-xl bg-brand-soft/60 p-4 shadow-sm">
+        <p class="text-xs text-ink/60">Saldo</p>
+        <p class="mt-1 text-lg font-semibold">{formatRupiah(balance.balance)}</p>
+      </div>
+      <div class="rounded-xl bg-white p-4 shadow-sm">
+        <p class="text-xs text-ink/60">Total Setoran</p>
+        <p class="mt-1 text-lg font-semibold text-green-700">
+          {formatRupiah(balance.totalDeposit)}
+        </p>
+      </div>
+      <div class="rounded-xl bg-white p-4 shadow-sm">
+        <p class="text-xs text-ink/60">Total Penarikan</p>
+        <p class="mt-1 text-lg font-semibold text-red-700">
+          {formatRupiah(balance.totalWithdrawal)}
+        </p>
+      </div>
+    </div>
+
+    {isActive && (
+      <div class="grid grid-cols-2 gap-2">
+        <a
+          href={`/guru?siswa=${student.id}&mode=deposit`}
+          class="rounded-lg bg-brand py-3 text-center text-sm font-medium text-white hover:bg-brand/90"
+        >
+          + Tambah Setoran
+        </a>
+        <a
+          href={`/guru?siswa=${student.id}&mode=withdrawal`}
+          class="rounded-lg bg-red-600 py-3 text-center text-sm font-medium text-white hover:bg-red-700"
+        >
+          Tarik Uang
+        </a>
+      </div>
+    )}
+
+    <dl class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+      <div class="flex justify-between px-4 py-3 text-sm">
+        <dt class="text-ink/60">Orang Tua</dt>
+        <dd class="font-medium">{asParent(student.parent)?.full_name ?? 'Belum ada'}</dd>
+      </div>
+      <div class="flex justify-between px-4 py-3 text-sm">
+        <dt class="text-ink/60">Terdaftar</dt>
+        <dd class="text-xs text-ink/70">
+          {new Date(student.created_at).toLocaleDateString('id-ID')}
+        </dd>
+      </div>
+    </dl>
+
+    <section>
+      <h2 class="mb-3 text-sm font-medium text-ink/60">Riwayat Transaksi</h2>
+      {transactions.length > 0 ? (
+        <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+          {transactions.map((t) => {
+            const creator = asCreator(t.creator);
+            const isCorrection = t.correction_of !== null;
+            return (
+              <li class="px-4 py-3 text-sm">
+                <div class="flex items-center justify-between">
+                  <p class="font-medium">
+                    {isCorrection ? 'Koreksi' : t.type === 'deposit' ? 'Setoran' : 'Penarikan'}
+                  </p>
+                  <p
+                    class:list={[
+                      'font-medium',
+                      t.type === 'deposit' ? 'text-green-700' : 'text-red-700',
+                    ]}
+                  >
+                    {t.type === 'deposit' ? '+' : '−'} {formatRupiah(Number(t.amount))}
+                  </p>
+                </div>
+                <p class="mt-1 text-xs text-ink/50">
+                  {formatTimestamp(t.created_at)}
+                  {creator && ` · oleh ${creator.full_name}`}
+                </p>
+                {t.note && (
+                  <p class="mt-1 text-xs text-ink/70">"{t.note}"</p>
+                )}
+                {isCorrection && t.correction_reason && (
+                  <p class="mt-1 text-xs text-ink/70">
+                    Alasan: {t.correction_reason}
+                  </p>
+                )}
+                {!isCorrection && !correctedSet.has(t.id) && (
+                  <a
+                    href={`/guru/transaksi/${t.id}/koreksi`}
+                    class="mt-1 inline-block text-xs text-brand hover:underline"
+                  >
+                    Koreksi
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p class="rounded-xl bg-white px-4 py-8 text-center text-sm text-ink/50 shadow-sm">
+          Belum ada transaksi.
+        </p>
+      )}
+    </section>
+  </section>
+</Layout>
+
+<script is:inline>
+  // ponytail: client-side reload after POST keeps the workflow to one round trip;
+  // add optimistic UI if the toggle becomes a hot path.
+</script>

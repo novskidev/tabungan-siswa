@@ -1,0 +1,30 @@
+{
+  "name": "tabungan-sdn-klagen-1",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.2.6",
+    "@supabase/supabase-js": "^2.114.0",
+    "astro": "^7.2.10"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6"
+  }
+}

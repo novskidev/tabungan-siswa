@@ -1,0 +1,47 @@
+---
+interface Props {
+  role: 'teacher' | 'parent';
+  current: 'dashboard' | 'siswa' | 'kelas' | 'transaksi' | 'profil';
+}
+
+const { role, current } = Astro.props;
+
+const guruLinks = [
+  { key: 'dashboard', label: 'Dashboard', href: '/guru' },
+  { key: 'siswa', label: 'Siswa', href: '/guru/siswa' },
+  { key: 'transaksi', label: 'Transaksi', href: '/guru/transaksi' },
+  { key: 'kelas', label: 'Kelas', href: '/guru/kelas' },
+];
+
+const parentLinks = [
+  { key: 'dashboard', label: 'Beranda', href: '/orangtua' },
+  { key: 'profil', label: 'Profil', href: '/orangtua/profil' },
+];
+
+const links = role === 'teacher' ? guruLinks : parentLinks;
+---
+
+<nav class="mb-6 flex gap-1 rounded-lg bg-brand-soft/40 p-1 text-sm">
+  {
+    links.map((l) => (
+      <a
+        href={l.href}
+        class={`flex-1 rounded-md px-3 py-2 text-center transition ${
+          current === l.key
+            ? 'bg-white text-ink shadow-sm'
+            : 'text-ink/60 hover:text-ink'
+        }`}
+      >
+        {l.label}
+      </a>
+    ))
+  }
+  <form method="POST" action="/api/auth/logout" class="flex-1">
+    <button
+      type="submit"
+      class="w-full rounded-md px-3 py-2 text-ink/60 hover:text-ink"
+    >
+      Keluar
+    </button>
+  </form>
+</nav>

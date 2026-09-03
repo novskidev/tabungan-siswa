@@ -1,0 +1,24 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getCurrentProfile } from '../lib/supabase';
+
+const profile = await getCurrentProfile(Astro);
+if (profile) {
+  return Astro.redirect(profile.role === 'teacher' ? '/guru' : '/orangtua');
+}
+---
+
+<Layout title="Tabungan SDN Klagen 1">
+  <section class="space-y-6 pt-12 text-center">
+    <h1 class="text-3xl font-semibold tracking-tight">Tabungan SDN Klagen 1</h1>
+    <p class="text-base text-ink/70">
+      Sistem tabungan siswa sederhana untuk sekolah.
+    </p>
+    <a
+      href="/login"
+      class="inline-block rounded-lg bg-brand px-6 py-3 text-base font-medium text-white shadow-sm transition hover:bg-brand/90"
+    >
+      Login
+    </a>
+  </section>
+</Layout>

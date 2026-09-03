@@ -1,0 +1,630 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Nav from '../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimeShort,
+  getStudentBalance,
+  createTransaction,
+  getDailySummary,
+  getRecentTransactions,
+} from '../../lib/transactions';
+import { QUICK_AMOUNTS } from '../../lib/quick-amounts';
+import { asStudent } from '../../types/database';
+
+const profile = await requireRole(Astro, 'teacher');
+const { client } = getSupabase(Astro);
+
+const url = new URL(Astro.request.url);
+const q = (url.searchParams.get('q') ?? '').trim();
+const selectedId = url.searchParams.get('siswa') ?? '';
+const savedId = url.searchParams.get('saved') ?? '';
+const initialMode: 'deposit' | 'withdrawal' =
+  url.searchParams.get('mode') === 'withdrawal' ? 'withdrawal' : 'deposit';
+
+let errorMessage: string | null = null;
+let savedStudentName = '';
+
+if (savedId) {
+  const { data } = await client
+    .from('students')
+    .select('id, full_name')
+    .eq('id', savedId)
+    .maybeSingle();
+  if (data) savedStudentName = (data as { full_name: string }).full_name;
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const typeRaw = String(form.get('type') ?? '');
+  const amountRaw = Number(form.get('amount') ?? 0);
+  const note = String(form.get('note') ?? '').trim() || null;
+  const studentId = String(form.get('student_id') ?? '');
+  const type: 'deposit' | 'withdrawal' =
+    typeRaw === 'withdrawal' ? 'withdrawal' : 'deposit';
+  const amount = Math.floor(amountRaw);
+
+  if (!studentId) {
+    errorMessage = 'Siswa belum dipilih.';
+  } else if (!Number.isFinite(amount) || amount <= 0) {
+    errorMessage = 'Nominal harus lebih dari 0.';
+  } else {
+    const result = await createTransaction(Astro, {
+      studentId,
+      type,
+      amount,
+      note,
+    });
+    if (result.ok) {
+      const bal = await getStudentBalance(Astro, studentId);
+      const { data: stRow } = await client
+        .from('students')
+        .select('full_name')
+        .eq('id', studentId)
+        .maybeSingle();
+      const params = new URLSearchParams({ saved: studentId });
+      if (stRow) params.set('name', (stRow as { full_name: string }).full_name);
+      params.set('type', type);
+      params.set('amount', String(amount));
+      params.set('balance', String(bal.balance));
+      return Astro.redirect(`/guru?${params.toString()}`);
+    } else {
+      errorMessage = result.message;
+    }
+  }
+}
+
+let searchResults: {
+  id: string;
+  nis: string;
+  full_name: string;
+  class_name: string | null;
+}[] = [];
+if (q && !selectedId) {
+  const { data } = await client
+    .from('students')
+    .select('id, nis, full_name, class_id, class:classes(name)')
+    .eq('is_active', true)
+    .or(`full_name.ilike.%${q}%,nis.ilike.%${q}%`)
+    .order('full_name')
+    .limit(20);
+  searchResults = ((data ?? []) as Record<string, unknown>[]).map((s) => {
+    const cls = s.class as { name: string } | { name: string }[] | null;
+    const name = Array.isArray(cls) ? cls[0]?.name ?? null : cls?.name ?? null;
+    return {
+      id: s.id as string,
+      nis: s.nis as string,
+      full_name: s.full_name as string,
+      class_id: s.class_id as string,
+      class_name: name,
+    };
+  });
+}
+
+let selectedStudent: {
+  id: string;
+  nis: string;
+  full_name: string;
+  class_name: string | null;
+  balance: number;
+} | null = null;
+if (selectedId) {
+  const { data: st } = await client
+    .from('students')
+    .select('id, nis, full_name, class_id, class:classes(name)')
+    .eq('id', selectedId)
+    .maybeSingle();
+  if (st) {
+    const cls = st.class as { name: string } | { name: string }[] | null;
+    const name = Array.isArray(cls) ? cls[0]?.name ?? null : cls?.name ?? null;
+    const bal = await getStudentBalance(Astro, selectedId);
+    selectedStudent = {
+      id: st.id as string,
+      nis: st.nis as string,
+      full_name: st.full_name as string,
+      class_name: name,
+      balance: bal.balance,
+    };
+  } else {
+    return Astro.redirect('/guru');
+  }
+}
+
+const summary = await getDailySummary(client);
+const recent = await getRecentTransactions(client, 10);
+
+const bannerType = url.searchParams.get('type') as
+  | 'deposit'
+  | 'withdrawal'
+  | null;
+const bannerAmount = Number(url.searchParams.get('amount') ?? 0);
+const bannerBalance = Number(url.searchParams.get('balance') ?? 0);
+const bannerName = url.searchParams.get('name') ?? savedStudentName;
+const showSavedBanner =
+  savedId && bannerType && Number.isFinite(bannerAmount) && bannerAmount > 0;
+---
+
+<Layout title="Guru — Tabungan SDN Klagen 1" wide>
+  <Nav role="teacher" current="dashboard" />
+
+  <header class="mb-4">
+    <p class="text-xs text-ink/60">Tabungan SDN Klagen 1</p>
+    <h1 class="text-xl font-semibold">{profile.full_name}</h1>
+  </header>
+
+  {errorMessage && (
+    <div
+      role="alert"
+      class="mb-4 rounded-xl bg-red-100 p-4 text-sm text-red-900 shadow-sm"
+    >
+      <p class="font-medium">❌ Transaksi gagal disimpan.</p>
+      <p class="mt-1">{errorMessage}</p>
+    </div>
+  )}
+
+  {showSavedBanner && (
+    <div
+      role="status"
+      class="mb-4 rounded-xl bg-green-100 p-4 text-sm text-green-900 shadow-sm"
+    >
+      <p class="font-medium">
+        ✅ {bannerType === 'deposit' ? 'Setoran' : 'Penarikan'} berhasil
+      </p>
+      {bannerName && <p class="mt-1">{bannerName}</p>}
+      <p class="mt-1">
+        <span class="font-medium">
+          {bannerType === 'deposit' ? '+' : '−'}{formatRupiah(bannerAmount)}
+        </span>
+      </p>
+      <p class="mt-1 text-xs">
+        Saldo {formatRupiah(bannerBalance)}
+      </p>
+    </div>
+  )}
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <section
+      aria-label="Pencatatan transaksi"
+      class="rounded-xl bg-brand-soft/40 p-4 shadow-sm"
+    >
+      {!selectedStudent && (
+        <form method="GET" class="space-y-3" id="search-form" action="/guru">
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium">🔎 Cari siswa</span>
+            <input
+              name="q"
+              value={q}
+              autofocus
+              autocomplete="off"
+              placeholder="Nama atau NIS"
+              class="w-full rounded-md border border-ink/15 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+            />
+          </label>
+          <button class="hidden" type="submit">Cari</button>
+        </form>
+      )}
+
+      {!selectedStudent && (
+        <div id="search-results" class="mt-3">
+          {searchResults.length > 0 ? (
+            <ul class="divide-y divide-ink/10 rounded-md bg-white">
+              {searchResults.map((s) => (
+                <li>
+                  <a
+                    href={`/guru?siswa=${s.id}`}
+                    class="flex items-center justify-between px-4 py-3 hover:bg-ink/5"
+                  >
+                    <div>
+                      <p class="font-medium">{s.full_name}</p>
+                      <p class="text-xs text-ink/50">
+                        NIS {s.nis}
+                        {s.class_name && ` · ${s.class_name}`}
+                      </p>
+                    </div>
+                    <span class="text-ink/40" aria-hidden="true">›</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : q ? (
+            <p class="text-center text-sm text-ink/50">Siswa tidak ditemukan.</p>
+          ) : (
+            <p class="text-center text-xs text-ink/40">
+              Ketik nama atau NIS untuk memulai.
+            </p>
+          )}
+        </div>
+      )}
+
+      {selectedStudent && (
+        <div class="space-y-3">
+          <div class="rounded-lg bg-white p-4 shadow-sm">
+            <a
+              href="/guru"
+              class="text-xs text-ink/60 underline hover:text-ink"
+            >
+              ← Ganti siswa
+            </a>
+            <h2 class="mt-1 text-lg font-semibold">{selectedStudent.full_name}</h2>
+            <p class="text-xs text-ink/50">
+              NIS {selectedStudent.nis}
+              {selectedStudent.class_name && ` · Kelas ${selectedStudent.class_name}`}
+            </p>
+            <p class="mt-2 text-sm">
+              Saldo: <span class="font-semibold" data-balance={selectedStudent.balance}>{formatRupiah(selectedStudent.balance)}</span>
+            </p>
+          </div>
+
+          <form
+            method="POST"
+            action="/guru"
+            id="tx-form"
+            class="space-y-3 rounded-lg bg-white p-4 shadow-sm"
+          >
+            <input type="hidden" name="student_id" value={selectedStudent.id} />
+
+            <div class="flex gap-1 rounded-md bg-ink/5 p-1 text-sm" role="tablist" aria-label="Jenis transaksi">
+              <button
+                type="button"
+                data-mode="deposit"
+                role="tab"
+                aria-selected={initialMode === 'deposit'}
+                class="mode-btn flex-1 rounded-md px-3 py-2 font-medium transition data-[active=true]:bg-brand data-[active=true]:text-white"
+                data-active={initialMode === 'deposit'}
+              >
+                SETOR
+              </button>
+              <button
+                type="button"
+                data-mode="withdrawal"
+                role="tab"
+                aria-selected={initialMode === 'withdrawal'}
+                class="mode-btn flex-1 rounded-md px-3 py-2 font-medium transition data-[active=true]:bg-red-600 data-[active=true]:text-white"
+                data-active={initialMode === 'withdrawal'}
+              >
+                TARIK
+              </button>
+            </div>
+
+            <input type="hidden" name="type" id="type-input" value={initialMode} />
+            <input type="hidden" name="amount" id="amount-input" />
+
+            <fieldset>
+              <legend class="mb-2 text-sm font-medium">Nominal</legend>
+              <div class="grid grid-cols-5 gap-2" role="group" aria-label="Nominal cepat">
+                {QUICK_AMOUNTS.map((v) => (
+                  <button
+                    type="button"
+                    class="amount-btn rounded-md border border-ink/15 bg-white px-2 py-2.5 text-sm font-medium hover:border-brand"
+                    data-amount={v}
+                    aria-label={`Nominal ${formatRupiah(v)}`}
+                  >
+                    {v / 1000}K
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                id="custom-btn"
+                class="mt-2 w-full rounded-md border border-dashed border-ink/30 bg-white px-3 py-2 text-sm hover:border-brand"
+              >
+                Nominal Lain
+              </button>
+              <div id="custom-wrap" class="mt-2 hidden">
+                <label class="block text-sm">
+                  <span class="mb-1 block font-medium">Jumlah (Rp)</span>
+                  <input
+                    id="custom-amount"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputmode="numeric"
+                    placeholder="15000"
+                    class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+                  />
+                </label>
+              </div>
+            </fieldset>
+
+            <label class="block text-sm">
+              <span class="mb-1 block font-medium">
+                Catatan <span class="text-xs text-ink/50">(opsional)</span>
+              </span>
+              <input
+                name="note"
+                maxlength="200"
+                placeholder="Tabungan harian / Keperluan siswa"
+                class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+              />
+            </label>
+
+            <button
+              type="submit"
+              id="submit-btn"
+              disabled
+              aria-disabled="true"
+              class="w-full rounded-lg bg-brand px-4 py-3 text-base font-medium text-white transition hover:bg-brand/90 disabled:opacity-50"
+            >
+              Simpan
+            </button>
+          </form>
+
+          <dialog
+            id="confirm-dialog"
+            aria-labelledby="confirm-title"
+            class="rounded-xl p-5 backdrop:bg-black/40 sm:max-w-sm"
+          >
+            <h3 id="confirm-title" class="text-lg font-semibold">Tarik {formatRupiah(0)}?</h3>
+            <p class="mt-2 text-sm text-ink/70">
+              Saldo sekarang: <span id="confirm-balance" class="font-medium">—</span>
+            </p>
+            <p class="text-sm text-ink/70">
+              Saldo setelah penarikan: <span id="confirm-after" class="font-medium">—</span>
+            </p>
+            <p id="confirm-note" class="mt-2 hidden text-xs text-ink/60"></p>
+            <div class="mt-4 flex gap-2">
+              <button
+                type="button"
+                id="confirm-cancel"
+                class="flex-1 rounded-md bg-ink/10 px-3 py-2 text-sm font-medium hover:bg-ink/15"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                id="confirm-ok"
+                class="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Konfirmasi Penarikan
+              </button>
+            </div>
+          </dialog>
+        </div>
+      )}
+    </section>
+
+    <aside class="space-y-4">
+      <section class="rounded-xl bg-white p-4 shadow-sm">
+        <p class="text-xs font-medium text-ink/60">Hari Ini</p>
+        <div class="mt-2 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p class="text-xs text-ink/50">Setoran</p>
+            <p class="mt-0.5 text-sm font-semibold text-green-700">
+              {formatRupiah(summary.totalDeposit)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-ink/50">Penarikan</p>
+            <p class="mt-0.5 text-sm font-semibold text-red-700">
+              {formatRupiah(summary.totalWithdrawal)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-ink/50">Transaksi</p>
+            <p class="mt-0.5 text-sm font-semibold">{summary.count}</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="mb-2 flex items-baseline justify-between">
+          <h2 class="text-sm font-medium text-ink/60">Transaksi Terbaru</h2>
+          <a href="/guru/transaksi" class="text-xs text-ink/60 underline hover:text-ink">
+            Lihat Semua
+          </a>
+        </div>
+        {recent.length > 0 ? (
+          <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+            {recent.map((t) => (
+              <li class="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <div class="min-w-0">
+                  <a
+                    href={`/guru/siswa/${t.student_id}`}
+                    class="block truncate font-medium hover:underline"
+                  >
+                    {asStudent(t.student)?.full_name ?? '—'}
+                  </a>
+                  <p class="text-xs text-ink/50">{formatTimeShort(t.created_at)}</p>
+                </div>
+                <p
+                  class:list={[
+                    'shrink-0 text-sm font-medium',
+                    t.type === 'deposit' ? 'text-green-700' : 'text-red-700',
+                  ]}
+                >
+                  {t.type === 'deposit' ? '+' : '−'}{Number(t.amount) / 1000}K
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="rounded-xl bg-white px-4 py-6 text-center text-sm text-ink/50 shadow-sm">
+            Belum ada transaksi hari ini.
+          </p>
+        )}
+      </section>
+    </aside>
+  </div>
+
+  <script is:inline>
+    (() => {
+      let mode = 'deposit';
+      let amount = 0;
+      let currentBalance = 0;
+      let lastCustomValue = '';
+
+      const typeInputEl = document.getElementById('type-input');
+      if (typeInputEl) mode = typeInputEl.value === 'withdrawal' ? 'withdrawal' : 'deposit';
+
+      const typeInput = document.getElementById('type-input');
+      const amountInput = document.getElementById('amount-input');
+      const submitBtn = document.getElementById('submit-btn');
+      const customBtn = document.getElementById('custom-btn');
+      const customWrap = document.getElementById('custom-wrap');
+      const customAmount = document.getElementById('custom-amount');
+      const form = document.getElementById('tx-form');
+      const balanceEl = document.querySelector('[data-balance]');
+      if (balanceEl) {
+        currentBalance = Number(balanceEl.getAttribute('data-balance')) || 0;
+      }
+
+      const updateSubmit = () => {
+        const ok = amount > 0;
+        if (submitBtn) {
+          submitBtn.disabled = !ok;
+          submitBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+        }
+        if (amountInput) amountInput.value = ok ? String(amount) : '';
+      };
+
+      document.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.mode-btn').forEach((b) => {
+            b.setAttribute('data-active', 'false');
+            b.setAttribute('aria-selected', 'false');
+          });
+          btn.setAttribute('data-active', 'true');
+          btn.setAttribute('aria-selected', 'true');
+          mode = btn.getAttribute('data-mode');
+          if (typeInput) typeInput.value = mode;
+          if (mode === 'deposit') {
+            const noteInput = form && form.querySelector('input[name="note"]');
+            if (noteInput) noteInput.removeAttribute('required');
+          }
+        });
+      });
+
+      document.querySelectorAll('.amount-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.amount-btn').forEach((b) =>
+            b.classList.remove('border-brand', 'bg-brand-soft/40'),
+          );
+          btn.classList.add('border-brand', 'bg-brand-soft/40');
+          amount = Number(btn.getAttribute('data-amount'));
+          if (customWrap) customWrap.classList.add('hidden');
+          if (customAmount) customAmount.value = '';
+          updateSubmit();
+        });
+      });
+
+      if (customBtn) {
+        customBtn.addEventListener('click', () => {
+          if (customWrap) customWrap.classList.toggle('hidden');
+          document.querySelectorAll('.amount-btn').forEach((b) =>
+            b.classList.remove('border-brand', 'bg-brand-soft/40'),
+          );
+          if (customAmount) {
+            customAmount.value = lastCustomValue;
+            customAmount.focus();
+          }
+        });
+      }
+
+      if (customAmount) {
+        customAmount.addEventListener('input', () => {
+          const v = Number(customAmount.value);
+          amount = Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+          updateSubmit();
+        });
+        customAmount.addEventListener('blur', () => {
+          if (customAmount.value) lastCustomValue = customAmount.value;
+        });
+      }
+
+      // Keyboard: Escape returns to search
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const link = document.querySelector('a[href="/guru"]');
+          if (link) link.click();
+        }
+      });
+
+      // Withdrawal confirmation
+      const dialog = document.getElementById('confirm-dialog');
+      const dialogTitle = dialog ? dialog.querySelector('h3') : null;
+      const dialogBalance = document.getElementById('confirm-balance');
+      const dialogAfter = document.getElementById('confirm-after');
+      const dialogNote = document.getElementById('confirm-note');
+      const confirmCancel = document.getElementById('confirm-cancel');
+      const confirmOk = document.getElementById('confirm-ok');
+
+      const rupiah = (n) =>
+        'Rp' + (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+
+      const submitTransaction = () => {
+        if (form) {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Menyimpan...';
+          }
+          form.submit();
+        }
+      };
+
+      if (form) {
+        form.addEventListener('submit', (e) => {
+          if (!submitBtn || submitBtn.disabled) {
+            e.preventDefault();
+            return;
+          }
+          const noteInput = form.querySelector('input[name="note"]');
+          const noteVal = noteInput ? String(noteInput.value || '').trim() : '';
+          if (mode === 'withdrawal') {
+            e.preventDefault();
+            if (dialog && dialogTitle && dialogBalance && dialogAfter) {
+              dialogTitle.textContent = 'Tarik ' + rupiah(amount) + '?';
+              dialogBalance.textContent = rupiah(currentBalance);
+              dialogAfter.textContent = rupiah(currentBalance - amount);
+              if (dialogNote) {
+                if (noteVal) {
+                  dialogNote.textContent = 'Catatan: ' + noteVal;
+                  dialogNote.classList.remove('hidden');
+                } else {
+                  dialogNote.classList.add('hidden');
+                }
+              }
+              if (typeof dialog.showModal === 'function') {
+                dialog.showModal();
+              } else {
+                if (confirm('Tarik ' + rupiah(amount) + '?')) submitTransaction();
+              }
+            }
+          } else {
+            // Deposit: suggest note but don't require
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Menyimpan...';
+            }
+          }
+        });
+      }
+
+      if (confirmCancel && dialog) {
+        confirmCancel.addEventListener('click', () => {
+          if (typeof dialog.close === 'function') dialog.close();
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Simpan';
+          }
+        });
+      }
+      if (confirmOk) {
+        confirmOk.addEventListener('click', () => {
+          if (dialog && typeof dialog.close === 'function') dialog.close();
+          submitTransaction();
+        });
+      }
+
+      // After success banner shown, refocus search on next visit
+      const banner = document.querySelector('[role="status"]');
+      const params = new URLSearchParams(window.location.search);
+      if (banner && !params.get('siswa')) {
+        const input = document.querySelector('input[name="q"]');
+        if (input) {
+          setTimeout(() => input.focus(), 50);
+        }
+      }
+    })();
+  </script>
+</Layout>

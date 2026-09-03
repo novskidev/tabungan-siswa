@@ -1,0 +1,88 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getSupabase, getCurrentUser } from '../lib/supabase';
+
+let error: string | null = null;
+let loading = false;
+
+if (Astro.request.method === 'POST') {
+  loading = true;
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+
+  if (!email || !password) {
+    error = 'Email dan password wajib diisi.';
+    loading = false;
+  } else {
+    const { client } = getSupabase(Astro);
+    const { error: signInError } = await client.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (signInError) {
+      error =
+        signInError.message.toLowerCase().includes('invalid login')
+          ? 'Email atau password salah.'
+          : 'Login gagal. Coba lagi.';
+      loading = false;
+    } else {
+      return Astro.redirect('/dashboard');
+    }
+  }
+}
+
+const session = await getCurrentUser(Astro);
+if (session) return Astro.redirect('/dashboard');
+---
+
+<Layout title="Login — Tabungan SDN Klagen 1">
+  <section class="space-y-6 pt-6">
+    <header class="space-y-1 text-center">
+      <h1 class="text-2xl font-semibold">Masuk</h1>
+      <p class="text-sm text-ink/60">Gunakan akun yang terdaftar.</p>
+    </header>
+
+    <form method="POST" class="space-y-4 rounded-xl bg-brand-soft/60 p-6 shadow-sm">
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">Email / Username</span>
+        <input
+          name="email"
+          type="email"
+          required
+          autocomplete="username"
+          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">Password</span>
+        <input
+          name="password"
+          type="password"
+          required
+          autocomplete="current-password"
+          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        />
+      </label>
+
+      {error && (
+        <p role="alert" class="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90 disabled:opacity-60"
+      >
+        {loading ? 'Memproses...' : 'Masuk'}
+      </button>
+    </form>
+
+    <p class="text-center text-xs text-ink/50">
+      <a href="/" class="underline hover:text-brand">Kembali</a>
+    </p>
+  </section>
+</Layout>
