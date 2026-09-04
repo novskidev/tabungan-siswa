@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { APIContext } from 'astro';
 
-export type Role = 'teacher' | 'parent';
+export type Role = 'teacher' | 'master';
 
 export interface Profile {
   id: string;
@@ -70,8 +70,13 @@ export async function requireRole(ctx: APIContext, role: Role): Promise<Profile>
   if (!profile) {
     return ctx.redirect('/login') as unknown as Profile;
   }
-  if (profile.role !== role) {
+  // Master can do everything a teacher can.
+  if (profile.role !== role && !(role === 'teacher' && profile.role === 'master')) {
     return ctx.redirect('/') as unknown as Profile;
   }
   return profile;
+}
+
+export async function requireMaster(ctx: APIContext): Promise<Profile> {
+  return requireRole(ctx, 'master');
 }

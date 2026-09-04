@@ -10,7 +10,7 @@ import {
 } from '../../../lib/transactions';
 import { asStudent, type TransactionRow } from '../../../types/database';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
 const url = new URL(Astro.request.url);
@@ -22,14 +22,14 @@ const typeFilter = (url.searchParams.get('jenis') ?? '') as
   | 'withdrawal';
 const correctedId = url.searchParams.get('corrected') ?? '';
 
-const students: { id: string; full_name: string; nis: string }[] = (
+const students: { id: string; full_name: string; nis: string | null }[] = (
   (
     await client
       .from('students')
       .select('id, full_name, nis')
       .order('full_name')
   ).data ?? []
-) as { id: string; full_name: string; nis: string }[];
+) as { id: string; full_name: string; nis: string | null }[];
 
 let dateStart: Date | null = null;
 let dateEnd: Date | null = null;
@@ -78,7 +78,7 @@ const correctedSet = new Set(
 ---
 
 <Layout title="Transaksi — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="transaksi" />
+  <Nav role={profile.role} current="transaksi" />
 
   <header class="mb-4">
     <h1 class="text-xl font-semibold">Transaksi</h1>

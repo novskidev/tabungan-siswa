@@ -48,8 +48,8 @@ These work on any plan. They are not automatic — schedule them.
 
 Given the project size (22 students, low write rate):
 
-1. Configure Cloudflare Pages with the production Cloudflare KV binding so
-   sessions persist (already done — see `astro.config.mjs`).
+1. Auth sessions live in `sb-access-token` / `sb-refresh-token` cookies —
+   no KV binding needed on Cloudflare Pages.
 2. On Free or Pro, schedule a weekly `pg_dump` snapshot via a cron worker,
    Supabase scheduled function, or external cron.
 3. Store the dump outside Supabase (e.g., Cloudflare R2, GitHub Actions

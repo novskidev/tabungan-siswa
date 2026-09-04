@@ -1,8 +1,8 @@
 # Tabungan SDN Klagen 1
 
 Sistem tabungan siswa sederhana untuk SDN Klagen 1. Aplikasi pencatatan
-setoran dan penarikan tabungan siswa oleh guru, dengan dashboard orang tua
-untuk melihat saldo dan riwayat anak.
+setoran dan penarikan tabungan siswa oleh guru, dengan halaman publik
+ber-PIN untuk orang tua melihat saldo dan riwayat anak.
 
 **Status**: feature-complete, production-ready for pilot use. See
 `docs/backup-and-recovery.md` and `docs/architecture.md`.
@@ -10,16 +10,17 @@ untuk melihat saldo dan riwayat anak.
 ## Overview
 
 A 22-student school savings app. One teacher records every transaction
-(deposit / withdrawal). Each parent logs in to see their own child's
-balance and history. Balances are derived from the transaction history —
+(deposit / withdrawal). Parents are anonymous: pick the child's name,
+enter a 4-digit PIN to see balance and history. Balances are derived
+from the transaction history —
 never stored. Corrections are reversing transactions, not deletes.
 
 ## Features
 
 - Teacher workflow: search student → quick amount or custom → save.
   Daily summary on the dashboard, full transaction history with filters.
-- Parent workflow: list of children, per-child saldo and totals, history
-  grouped by day.
+- Parent workflow: pick child name on `/`, enter 4-digit PIN on
+  `/siswa/[public_code]`, see saldo + totals + history grouped by day.
 - Withdrawal confirmation modal (native `<dialog>`).
 - Correction flow: open transaction → reason → confirm → reverse.
 - Inactive-student handling: moved/lulus students keep their history but
@@ -27,7 +28,7 @@ never stored. Corrections are reversing transactions, not deletes.
 - Single source of truth: balance is `SUM(deposit) - SUM(withdrawal)`;
   every page computes it the same way.
 - Immutable transactions: no UPDATE or DELETE policy at the DB level.
-- Server-time rendered in `Asia/Jakarta` so teacher and parent always agree
+- Server-time rendered in `Asia/Jakarta` so teacher and public PIN page always agree
   on the calendar date of a transaction.
 
 Out of scope (intentionally):
@@ -66,9 +67,14 @@ Schema is in `supabase/migrations/`, run in order:
 | `20250903120001_classes.sql` | 0 | `classes` table |
 | `20250903120100_profiles_teacher_read.sql` | 1 | teacher SELECT on profiles |
 | `20250903120101_classes_teacher_crud.sql` | 1 | teacher CRUD on classes |
-| `20250903120102_students.sql` | 1 | `students` table + parent SELECT |
+| `20250903120102_students.sql` | 1 | `students` table (legacy `class_id`/`parent_id`) |
 | `20250903120200_transactions.sql` | 2 | `transactions`, `create_transaction` RPC |
 | `20250903120300_corrections.sql` | 5 | `correction_of`, `correct_transaction` RPC, `students.is_active` |
+| `20250904000000_mvp_public_pin.sql` | MVP | `public_code` + bcrypt `pin_hash`, `class_name` (drops `classes` table + legacy columns), public RPCs (`get_active_students`, `verify_student_pin`, `get_student_history`), teacher RPCs (`create_student`, `reset_student_pin`) |
+| `20250904000001_reset_balance.sql` | MVP | `reset_student_balance` testing helper (teacher/master) |
+| `20250904000002_delete_student.sql` | MVP | `delete_student` testing cleanup (teacher/master, `SECURITY DEFINER`) |
+| `20250904000003_change_pin.sql` | MVP | `change_student_pin` parent PIN change (anon-safe, `SECURITY DEFINER`) |
+| `20250904000004_master_role.sql` | MVP | `master` role (Novski), `block_profile_role_change` trigger, widen policies + RPCs, master RPCs (`list_teachers`, `create_teacher_profile`, `lookup_teacher_email`) |
 
 Foreign keys all `ON DELETE RESTRICT` so historical rows survive.
 
@@ -89,11 +95,40 @@ RPCs:
 - `correct_transaction(p_original_id uuid, p_reason text)` — `SECURITY INVOKER`,
   locks original row `FOR UPDATE`, rejects already-corrected, rejects
   reversal that would push balance negative.
+- `get_active_students()` — `SECURITY DEFINER`, public student list for `/`.
+- `verify_student_pin(p_code text, p_pin text)` — `SECURITY DEFINER`,
+  PIN-gated saldo for `/siswa/[public_code]`.
+- `get_student_history(p_code text, p_pin text)` — `SECURITY DEFINER`,
+  PIN-gated history (limit 200).
+- `create_student(p_full_name text, p_class_name text, p_nis text)` —
+  teacher/master, generates `public_code` + bcrypt PIN (default = first digit
+  of class ×4).
+- `reset_student_pin(p_student_id uuid)` — teacher/master PIN reset to class default.
+- `reset_student_balance(p_student_id uuid)` — teacher/master testing reset
+  (deletes student transactions).
+- `delete_student(p_student_id uuid)` — `SECURITY DEFINER`, teacher/master
+  student + history delete (testing cleanup).
+- `change_student_pin(p_code text, p_old_pin text, p_new_pin text)` —
+  `SECURITY DEFINER`, parent PIN change (anon-safe, old-PIN checked).
+- `list_teachers()` — `SECURITY DEFINER`, master-only teacher list.
+- `create_teacher_profile(p_user_id uuid, p_full_name text)` —
+  `SECURITY DEFINER`, master-only teacher profile insert.
+- `lookup_teacher_email(p_email text)` — `SECURITY DEFINER`, master-only
+  teacher email check gating password-reset emails.
 
 ## Authentication
 
-Supabase Auth (email + password). Session is a Supabase cookie attached to
-every SSR request. `requireRole(ctx, role)` in `src/lib/supabase.ts` returns:
+Supabase Auth (email + password) is teacher + master. Session is a Supabase
+cookie attached to every SSR request. `requireRole(ctx, 'teacher')` in
+`src/lib/supabase.ts` returns (master passes teacher gates):
+
+- `redirect('/login')` if no session.
+- `redirect('/')` if role doesn't match.
+
+Parents never log in: they open `/`, pick the child's name, and enter the
+4-digit PIN on `/siswa/[public_code]`. PINs are bcrypt-hashed (`pin_hash`),
+never stored plaintext, and parent data flows only through the
+`SECURITY DEFINER` RPCs above — `anon` has zero table access.
 
 - `redirect('/login')` if no session.
 - `redirect('/')` if role doesn't match.
@@ -102,24 +137,32 @@ Logout via `POST /api/auth/logout` (single Keluar button in Nav).
 
 ## Roles
 
+- `master` — Novski. Everything teacher can, plus: tambah guru di `/master`
+  (via Supabase `signUp`, profil via `create_teacher_profile`), kirim link
+  reset password guru (via `resetPasswordForEmail` → `/ganti-password`,
+  gated by `lookup_teacher_email`), ubah nama + password sendiri di
+  `/master/profil` (via `auth.updateUser`). Direct `role` update blocked by
+  `block_profile_role_change()` trigger.
 - `teacher` — full read across profiles, students, transactions; insert on
-  transactions (with `created_by = auth.uid()` check); insert on students;
-  insert on classes. No update or delete anywhere on `transactions`.
-- `parent` — read self profile; read own students (subquery on
-  `students.parent_id = auth.uid()`); read own students' transactions.
-  No write anywhere.
+  transactions (with `created_by = auth.uid()` check); insert/update students
+  via table policy + `create_student`/`reset_student_pin` RPCs.
+  No update or delete anywhere on `transactions`.
+- `parent` — no login, no profile, no table access. Anonymous access only
+  via `get_active_students`, `verify_student_pin`, `get_student_history`
+  with `(public_code, PIN)`. No write anywhere.
 
 ## RLS
 
-All four tables have `enable row level security`. No `USING (true)`. No
-policy for `anon`. Full policy table:
+All three tables (`profiles`, `students`, `transactions`) have
+`enable row level security`. No `USING (true)`. No table policy for `anon`
+(parents go through `SECURITY DEFINER` RPCs only). The legacy `classes`
+table is dropped by the MVP migration. Full policy table:
 
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |-------|--------|--------|--------|--------|
-| `profiles` | teacher: all · parent: self | none | none | none |
-| `classes` | authenticated | teacher | teacher | teacher |
-| `students` | teacher: all · parent: own | teacher | teacher | teacher (no UI) |
-| `transactions` | teacher: all · parent: own children | teacher (with check `created_by = auth.uid()`) | none | none |
+| `profiles` | self only | none | own | none |
+| `students` | teacher: all | teacher | teacher | teacher (no UI) |
+| `transactions` | teacher: all | teacher (with check `created_by = auth.uid()`) | none | none |
 
 ## Transaction Model
 
@@ -161,7 +204,7 @@ Reports are server-rendered pages, not a separate feature.
 
 - `/guru/transaksi` — full transaction list with date / student / type
   filters, grouped by day, capped at 500 rows. Teachers see everything.
-- `/orangtua/anak/[id]` — child's full history grouped by day.
+- `/siswa/[public_code]` — PIN-gated history grouped by day (via `get_student_history`).
 
 There is no `/reports` route; reports are the same pages, filtered.
 
@@ -209,10 +252,8 @@ Cloudflare Pages.
    - Build command: `bun run build`
    - Build output: `dist`
 4. Environment variables: set the two PUBLIC_* values.
-5. Bindings: `SESSION` KV namespace is required for Supabase Auth SSR
-   cookie session. Create one in Cloudflare Dashboard → Workers → KV →
-   Create namespace, then add it under Settings → Functions → KV
-   namespace bindings with the name `SESSION`.
+5. No KV binding needed — auth sessions live in `sb-access-token` /
+   `sb-refresh-token` cookies, not in Workers KV.
 6. Save and deploy.
 
 ## Backup & Recovery
@@ -234,7 +275,10 @@ Short version:
 - No `SUPABASE_SERVICE_ROLE_KEY` in source, in `.env.example`, or in any
   README or comment. Verified by grep.
 - No `USING (true)` policy. Verified by grep.
-- No `to anon` policy. Verified by grep.
+- No `to anon` table policy (anon reaches data only through the three public
+  PIN RPCs). Verified by grep.
+- Wrong PIN returns zero rows with a generic "PIN salah" message — no
+  cross-child data leak.
 - Error messages mapped to user-friendly Indonesian; raw Supabase error
   strings never reach the browser.
 - Form submit disabled while in-flight; POST-Redirect-GET pattern prevents
@@ -245,21 +289,22 @@ Short version:
 
 ## Integrity & Reconciliation
 
-- `supabase/queries/integrity-check.sql` — finds students without class,
-  students with invalid parent, transactions without student or created_by,
+- `supabase/queries/integrity-check.sql` — finds students missing `class_name`/
+  `public_code`/`pin_hash`, duplicate codes, transactions without student or created_by,
   non-positive amounts, invalid types, orphaned corrections, duplicate
   corrections, orphan profiles. Expected output: zero rows.
 - `supabase/queries/balance-reconciliation.sql` — for each student,
   prints `total_deposit`, `total_withdrawal`, `expected_balance`. Compare
-  to what `/guru/siswa/[id]` and `/orangtua/anak/[id]` show; they must
+  to what `/guru/siswa/[id]` and `/siswa/[public_code]` show; they must
   match (single source of truth: `getStudentBalance`).
 
 ## Routes
 
-### Public
+### Public (no login)
 
-- `/` — landing
-- `/login` — sign in
+- `/` — student list with search (via `get_active_students`)
+- `/siswa/[public_code]` — PIN form → saldo + totals + history
+- `/login` — teacher sign in
 
 ### Teacher
 
@@ -268,16 +313,21 @@ Short version:
 - `/guru/siswa` — list with search + class filter
 - `/guru/siswa/new` — create student
 - `/guru/siswa/[id]` — detail with saldo, totals, history, Aktifkan/Nonaktifkan
-- `/guru/siswa/[id]/edit` — edit student (incl. parent reassignment)
-- `/guru/kelas` — class list
+- `/guru/siswa/[id]/edit` — edit student (name / NIS / class)
+- `/guru/kelas` — redirects to `/guru/siswa` (legacy route, classes table dropped)
 - `/guru/transaksi` — transaction list with filters (Tanggal / Siswa / Jenis)
 - `/guru/transaksi/[id]/koreksi` — correction form
 
+### Master
+
+- `/master` — kelola guru (tambah akun, kirim link reset password)
+- `/master/profil` — ubah nama + ganti password sendiri
+- `/ganti-password` — public, target link reset password (PKCE `?code=`)
+
 ### Parent
 
-- `/orangtua` — list of children + saldo each
-- `/orangtua/anak/[id]` — detail with saldo + totals + history
-- `/orangtua/profil` — self profile + Keluar
+No parent routes. Parents use `/` + `/siswa/[public_code]` anonymously.
+Legacy `/orangtua/*` pages redirect to `/`.
 
 ## Structure
 
@@ -310,13 +360,14 @@ Short version:
     │   └── quick-amounts.ts
     ├── pages/
     │   ├── api/auth/logout.ts
-    │   ├── dashboard.astro          (role router)
-    │   ├── index.astro
-    │   ├── login.astro
-    │   ├── guru/{index,kelas/...}.astro
+    │   ├── dashboard.astro          (teacher router → /guru)
+    │   ├── index.astro              (public student list)
+    │   ├── login.astro              (teacher sign in)
+    │   ├── siswa/[public_code].astro (PIN → saldo + history)
+    │   ├── guru/{index,...}.astro
     │   ├── guru/siswa/{index,new,[id]/...}.astro
     │   ├── guru/transaksi/{index,[id]/koreksi}.astro
-    │   └── orangtua/{index,profil,anak/[id]/index}.astro
+    │   └── orangtua/*               (legacy redirects to `/`)
     ├── styles/global.css
     ├── env.d.ts
     └── types/database.ts

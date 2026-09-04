@@ -9,13 +9,11 @@ import {
   getStudentTransactions,
 } from '../../../../lib/transactions';
 import {
-  asClass,
-  asParent,
   asCreator,
-  type StudentWithRelations,
+  type StudentRow,
 } from '../../../../types/database';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
 const { id } = Astro.params;
@@ -23,19 +21,20 @@ if (!id) return Astro.redirect('/guru/siswa');
 
 const { data: studentRaw, error } = await client
   .from('students')
-  .select(
-    'id, nis, full_name, class_id, parent_id, is_active, created_at, updated_at, class:classes(id, name, academic_year), parent:profiles!students_parent_id_fkey(id, full_name)',
-  )
+  .select('id, nis, full_name, class_name, public_code, is_active, created_at, updated_at')
   .eq('id', id)
   .maybeSingle();
 
-const student = studentRaw as unknown as StudentWithRelations | { is_active: boolean } & StudentWithRelations | null;
+const student = studentRaw as unknown as StudentRow | null;
 
 if (error || !student) {
   return Astro.redirect('/guru/siswa');
 }
 
-const isActive = (student as { is_active: boolean }).is_active;
+let pinMessage: string | null = null;
+let freshPin: string | null = null;
+let balanceMessage: string | null = null;
+let deleteMessage: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -43,9 +42,30 @@ if (Astro.request.method === 'POST') {
   if (action === 'toggle_active') {
     await client
       .from('students')
-      .update({ is_active: !isActive } as Record<string, unknown>)
+      .update({ is_active: !student.is_active } as Record<string, unknown>)
       .eq('id', id);
     return Astro.redirect(`/guru/siswa/${id}`);
+  }
+  if (action === 'delete_student') {
+    const { error: deleteError } = await client.rpc('delete_student', {
+      p_student_id: id,
+    });
+    if (deleteError) deleteMessage = `Gagal menghapus siswa: ${deleteError.message}`;
+    else return Astro.redirect('/guru/siswa');
+  }
+  if (action === 'reset_balance') {
+    const { error: resetError } = await client.rpc('reset_student_balance', {
+      p_student_id: id,
+    });
+    if (resetError) balanceMessage = `Gagal mereset saldo: ${resetError.message}`;
+    else return Astro.redirect(`/guru/siswa/${id}`);
+  }
+  if (action === 'reset_pin') {
+    const { data: pin, error: pinError } = await client.rpc('reset_student_pin', {
+      p_student_id: id,
+    });
+    if (pinError) pinMessage = 'Gagal mereset PIN. Silakan coba lagi.';
+    else freshPin = pin as string;
   }
 }
 
@@ -60,7 +80,7 @@ const correctedSet = new Set(correctionIds);
 ---
 
 <Layout title={`${student.full_name} — Tabungan SDN Klagen 1`} wide>
-  <Nav role="teacher" current="siswa" />
+  <Nav role={profile.role} current="siswa" />
 
   <header class="mb-4 flex items-center justify-between">
     <a href="/guru/siswa" class="text-sm text-ink/60 underline hover:text-ink">
@@ -72,7 +92,7 @@ const correctedSet = new Set(correctionIds);
         <button
           class="rounded-md bg-ink/5 px-3 py-1.5 text-sm hover:bg-ink/10"
         >
-          {isActive ? 'Nonaktifkan' : 'Aktifkan'}
+          {student.is_active ? 'Nonaktifkan' : 'Aktifkan'}
         </button>
       </form>
       <a
@@ -81,6 +101,14 @@ const correctedSet = new Set(correctionIds);
       >
         Edit
       </a>
+      <form method="POST" id="delete-student-form" class="inline">
+        <input type="hidden" name="action" value="delete_student" />
+        <button
+          class="rounded-md bg-red-100 px-3 py-1.5 text-sm text-red-800 hover:bg-red-200"
+        >
+          Hapus
+        </button>
+      </form>
     </div>
   </header>
 
@@ -88,10 +116,16 @@ const correctedSet = new Set(correctionIds);
     <div>
       <h1 class="text-2xl font-semibold">{student.full_name}</h1>
       <p class="text-sm text-ink/60">
-        Kelas {asClass(student.class)?.name ?? '—'} · NIS {student.nis}
-        {isActive ? '' : ' · Tidak Aktif'}
+        Kelas {student.class_name}{student.nis ? ` · NIS ${student.nis}` : ''}
+        {student.is_active ? '' : ' · Tidak Aktif'}
       </p>
     </div>
+
+    {balanceMessage && (
+      <p role="alert" class="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+        {balanceMessage}
+      </p>
+    )}
 
     <div class="grid grid-cols-3 gap-2">
       <div class="rounded-xl bg-brand-soft/60 p-4 shadow-sm">
@@ -112,8 +146,17 @@ const correctedSet = new Set(correctionIds);
       </div>
     </div>
 
-    {isActive && (
-      <div class="grid grid-cols-2 gap-2">
+    {balance.balance > 0 && (
+      <form method="POST" id="reset-balance-form" class="text-center">
+        <input type="hidden" name="action" value="reset_balance" />
+        <button class="text-xs text-ink/40 underline hover:text-red-700">
+          Reset saldo ke 0 (testing)
+        </button>
+      </form>
+    )}
+
+    {student.is_active && (
+      <div class="mt-2 grid grid-cols-2 gap-2">
         <a
           href={`/guru?siswa=${student.id}&mode=deposit`}
           class="rounded-lg bg-brand py-3 text-center text-sm font-medium text-white hover:bg-brand/90"
@@ -130,10 +173,32 @@ const correctedSet = new Set(correctionIds);
     )}
 
     <dl class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
-      <div class="flex justify-between px-4 py-3 text-sm">
-        <dt class="text-ink/60">Orang Tua</dt>
-        <dd class="font-medium">{asParent(student.parent)?.full_name ?? 'Belum ada'}</dd>
+      <div class="flex justify-between gap-3 px-4 py-3 text-sm">
+        <dt class="text-ink/60">Halaman publik</dt>
+        <dd class="font-medium">
+          <a href={`/siswa/${student.public_code}`} class="text-brand hover:underline">
+            /siswa/{student.public_code}
+          </a>
+        </dd>
       </div>
+      <div class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+        <dt class="text-ink/60">PIN orang tua</dt>
+        <dd>
+          {freshPin ? (
+            <span class="font-mono font-semibold">PIN baru: {freshPin}</span>
+          ) : (
+            <form method="POST" class="inline" id="reset-pin-form">
+              <input type="hidden" name="action" value="reset_pin" />
+              <button class="rounded-md bg-ink/5 px-3 py-1.5 text-sm hover:bg-ink/10">
+                Reset PIN
+              </button>
+            </form>
+          )}
+        </dd>
+      </div>
+      {pinMessage && (
+        <div class="px-4 py-2 text-xs text-red-700">{pinMessage}</div>
+      )}
       <div class="flex justify-between px-4 py-3 text-sm">
         <dt class="text-ink/60">Terdaftar</dt>
         <dd class="text-xs text-ink/70">
@@ -141,6 +206,12 @@ const correctedSet = new Set(correctionIds);
         </dd>
       </div>
     </dl>
+
+    {deleteMessage && (
+      <p role="alert" class="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+        {deleteMessage}
+      </p>
+    )}
 
     <section>
       <h2 class="mb-3 text-sm font-medium text-ink/60">Riwayat Transaksi</h2>
@@ -198,6 +269,18 @@ const correctedSet = new Set(correctionIds);
 </Layout>
 
 <script is:inline>
-  // ponytail: client-side reload after POST keeps the workflow to one round trip;
-  // add optimistic UI if the toggle becomes a hot path.
+  (function () {
+    var form = document.getElementById('reset-pin-form');
+    if (form) form.addEventListener('submit', function (e) {
+      if (!window.confirm('Reset PIN siswa ini ke PIN awal kelas?')) e.preventDefault();
+    });
+    var delForm = document.getElementById('delete-student-form');
+    if (delForm) delForm.addEventListener('submit', function (e) {
+      if (!window.confirm('Hapus siswa ini beserta SEMUA riwayat transaksinya? Tidak bisa dibatalkan.')) e.preventDefault();
+    });
+    var rbForm = document.getElementById('reset-balance-form');
+    if (rbForm) rbForm.addEventListener('submit', function (e) {
+      if (!window.confirm('Reset saldo ke 0? Semua riwayat transaksi siswa ini dihapus.')) e.preventDefault();
+    });
+  })();
 </script>

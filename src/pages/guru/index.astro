@@ -77,53 +77,46 @@ if (Astro.request.method === 'POST') {
 
 let searchResults: {
   id: string;
-  nis: string;
+  nis: string | null;
   full_name: string;
-  class_name: string | null;
+  class_name: string;
 }[] = [];
 if (q && !selectedId) {
   const { data } = await client
     .from('students')
-    .select('id, nis, full_name, class_id, class:classes(name)')
+    .select('id, nis, full_name, class_name')
     .eq('is_active', true)
     .or(`full_name.ilike.%${q}%,nis.ilike.%${q}%`)
     .order('full_name')
     .limit(20);
-  searchResults = ((data ?? []) as Record<string, unknown>[]).map((s) => {
-    const cls = s.class as { name: string } | { name: string }[] | null;
-    const name = Array.isArray(cls) ? cls[0]?.name ?? null : cls?.name ?? null;
-    return {
-      id: s.id as string,
-      nis: s.nis as string,
-      full_name: s.full_name as string,
-      class_id: s.class_id as string,
-      class_name: name,
-    };
-  });
+  searchResults = ((data ?? []) as Record<string, unknown>[]).map((s) => ({
+    id: s.id as string,
+    nis: (s.nis as string | null) ?? null,
+    full_name: s.full_name as string,
+    class_name: s.class_name as string,
+  }));
 }
 
 let selectedStudent: {
   id: string;
-  nis: string;
+  nis: string | null;
   full_name: string;
-  class_name: string | null;
+  class_name: string;
   balance: number;
 } | null = null;
 if (selectedId) {
   const { data: st } = await client
     .from('students')
-    .select('id, nis, full_name, class_id, class:classes(name)')
+    .select('id, nis, full_name, class_name')
     .eq('id', selectedId)
     .maybeSingle();
   if (st) {
-    const cls = st.class as { name: string } | { name: string }[] | null;
-    const name = Array.isArray(cls) ? cls[0]?.name ?? null : cls?.name ?? null;
     const bal = await getStudentBalance(Astro, selectedId);
     selectedStudent = {
       id: st.id as string,
-      nis: st.nis as string,
+      nis: (st.nis as string | null) ?? null,
       full_name: st.full_name as string,
-      class_name: name,
+      class_name: st.class_name as string,
       balance: bal.balance,
     };
   } else {
@@ -146,7 +139,7 @@ const showSavedBanner =
 ---
 
 <Layout title="Guru — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="dashboard" />
+  <Nav role={profile.role} current="dashboard" />
 
   <header class="mb-4">
     <p class="text-xs text-ink/60">Tabungan SDN Klagen 1</p>
@@ -218,8 +211,7 @@ const showSavedBanner =
                     <div>
                       <p class="font-medium">{s.full_name}</p>
                       <p class="text-xs text-ink/50">
-                        NIS {s.nis}
-                        {s.class_name && ` · ${s.class_name}`}
+                        {s.nis ? `NIS ${s.nis} · ` : ''}Kelas {s.class_name}
                       </p>
                     </div>
                     <span class="text-ink/40" aria-hidden="true">›</span>
@@ -248,8 +240,7 @@ const showSavedBanner =
             </a>
             <h2 class="mt-1 text-lg font-semibold">{selectedStudent.full_name}</h2>
             <p class="text-xs text-ink/50">
-              NIS {selectedStudent.nis}
-              {selectedStudent.class_name && ` · Kelas ${selectedStudent.class_name}`}
+              {selectedStudent.nis ? `NIS ${selectedStudent.nis} · ` : ''}Kelas {selectedStudent.class_name}
             </p>
             <p class="mt-2 text-sm">
               Saldo: <span class="font-semibold" data-balance={selectedStudent.balance}>{formatRupiah(selectedStudent.balance)}</span>

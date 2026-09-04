@@ -3,7 +3,7 @@
 ```
 ┌──────────────────────────────────────────┐
 │              Browser                     │
-│  Teacher ─┐   ┌─ Parent                  │
+│  Teacher ─┐   ┌─ Parent (anonymous, PIN)  │
 └───────────┼───┼─────────────────────────┘
             │   │
             ▼   ▼
@@ -21,12 +21,15 @@
                 ▼
    ┌─────────────────────────┐
    │   Supabase              │
-   │   ├── Auth (email+pwd)  │
-   │   ├── PostgreSQL        │
-   │   └── RLS               │
+   │   ├── Auth (teacher only) │
+   │   ├── PostgreSQL          │
+   │   └── RLS                 │
    └─────────────────────────┘
                 ▲
-                │ atomic RPC: create_transaction, correct_transaction
+                │ atomic RPC: create_transaction, correct_transaction,
+                │   create_student, reset_student_pin
+                │ anon-safe RPC: get_active_students, verify_student_pin,
+                │   get_student_history
                 │ read: getStudentBalance, getDailySummary, getStudentTransactions
 ```
 
@@ -41,16 +44,30 @@
 - **Astro** — owns the entire application. Pages call Supabase directly
   through `@supabase/supabase-js`. Auth is read via the Supabase cookie
   attached to every request.
-- **Supabase Auth** — email/password sign-in. Sessions are JWT-bearing
-  cookies. The cookie is sent on every request; Supabase resolves it into
-  `auth.uid()` inside PostgreSQL for RLS.
+- **Supabase Auth** — teacher + master email/password sign-in. Sessions are
+  JWT-bearing cookies. The cookie is sent on every request; Supabase
+  resolves it into `auth.uid()` inside PostgreSQL for RLS. Parents never
+  log in — they open `/siswa/[public_code]` and enter a 4-digit PIN.
+- **Roles** — `teacher` (operasional tabungan) dan `master` (Novski: semua
+  hak teacher + kelola guru di `/master` + profil di `/master/profil`).
+  Master menambah guru via Supabase `signUp` (anon key, tanpa service key),
+  reset password guru via `resetPasswordForEmail` (link ke `/ganti-password`),
+  ganti password sendiri via `auth.updateUser`. Daftar guru via
+  `SECURITY DEFINER` `list_teachers()` — `profiles` SELECT tetap self-only
+  supaya tidak ada login loop.
 - **PostgreSQL** — single source of truth. Schema is in
-  `supabase/migrations/`. Tables: `profiles`, `classes`, `students`,
-  `transactions`. RPCs: `create_transaction`, `correct_transaction`.
-- **RLS** — authorization boundary. Every table has RLS enabled. Parent
-  SELECT on `transactions` is gated through a subquery on `students`. Teacher
+  `supabase/migrations/`. Tables: `profiles` (teacher-only), `students`
+  (`class_name`, `public_code`, bcrypt `pin_hash`), `transactions`.
+  Teacher RPCs: `create_transaction`, `correct_transaction`,
+  `create_student`, `reset_student_pin`, `reset_student_balance`,
+  `delete_student`. Master RPCs: `list_teachers`, `create_teacher_profile`,
+  `lookup_teacher_email`. Anon-safe RPCs:
+  `get_active_students`, `verify_student_pin`, `get_student_history`.
+- **RLS** — authorization boundary. Every table has RLS enabled. Teacher
   INSERT is gated by `created_by = auth.uid()`. No `USING (true)` anywhere.
-  No policy for the `anon` role.
+  No table policy for the `anon` role — anonymous parents reach data only
+  through the three `SECURITY DEFINER` RPCs, which verify the PIN
+  (`extensions.crypt`) before returning anything.
 
 ## Data flow
 
@@ -73,16 +90,18 @@ Astro: redirect 302 → /guru?saved=ID&type=deposit&amount=10000&balance=...
 Browser renders /guru with success banner
 ```
 
-### Parent views history
+### Parent views history (anonymous, PIN-gated)
 
 ```
-Parent opens /orangtua/anak/[id]
+Parent opens / → picks child name → /siswa/[public_code]
         ↓
-Astro: requireRole(ctx, 'parent') → 302 /login if anonymous
+POST PIN (no client-side fetch)
         ↓
-SELECT students WHERE parent_id = auth.uid() (RLS enforces)
+Astro: rpc verify_student_pin(p_code, p_pin)
+  → bcrypt check inside SECURITY DEFINER function;
+    wrong PIN returns zero rows (generic "PIN salah" message)
         ↓
-SELECT transactions WHERE student_id IN (...) (RLS enforces)
+Astro: rpc get_student_history(p_code, p_pin) (same PIN re-verified)
         ↓
 Astro renders saldo + totals + grouped history
 ```
@@ -98,10 +117,10 @@ by:
 - `/guru/siswa/[id]` — saldo header
 - `/guru/siswa` — saldo column
 - `/guru/transaksi` — totals for filtered range
-- `/orangtua` — saldo per anak
-- `/orangtua/anak/[id]` — saldo header + total setoran/penarikan
+- `/siswa/[public_code]` — saldo header + total setoran/penarikan (PIN-gated)
 
-Teacher and parent therefore see identical saldo for the same student. This
+Teacher page and public PIN page therefore see identical saldo for the same
+student. This
 is verified by `supabase/queries/balance-reconciliation.sql`.
 
 ## Single source of truth: time
@@ -113,7 +132,7 @@ Database stores `timestamptz` (UTC). All display goes through
 - `formatDateLong` — `12 Januari 2026`
 - `formatTimestamp` — both
 - `dayKey` / `dayLabel` — calendar-day grouping pinned to Asia/Jakarta
-  (so "Hari Ini" / "Kemarin" agree between teacher and parent views).
+  (so "Hari Ini" / "Kemarin" agree between teacher and public PIN views).
 
 SSR runs on Cloudflare Workers whose `Date` is UTC. Pinning the formatter to
 WIB keeps the two sides consistent.

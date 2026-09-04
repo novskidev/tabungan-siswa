@@ -2,59 +2,48 @@
 import Layout from '../../../layouts/Layout.astro';
 import Nav from '../../../components/Nav.astro';
 import { getSupabase, requireRole } from '../../../lib/supabase';
+import { defaultPinForClass } from '../../../lib/pin';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
 let error: string | null = null;
-let success = false;
-let form = { full_name: '', nis: '', class_id: '', parent_id: '' };
+let created: { full_name: string; class_name: string; public_code: string; default_pin: string } | null = null;
+let form = { full_name: '', nis: '', class_name: '' };
 
 if (Astro.request.method === 'POST') {
   const data = await Astro.request.formData();
   form = {
     full_name: String(data.get('full_name') ?? '').trim(),
     nis: String(data.get('nis') ?? '').trim(),
-    class_id: String(data.get('class_id') ?? '').trim(),
-    parent_id: String(data.get('parent_id') ?? '').trim(),
+    class_name: String(data.get('class_name') ?? '').trim(),
   };
 
   if (!form.full_name) error = 'Nama wajib diisi.';
-  else if (!form.nis) error = 'NIS wajib diisi.';
-  else if (!form.class_id) error = 'Kelas wajib dipilih.';
+  else if (!form.class_name) error = 'Kelas wajib diisi.';
   else {
-    const { error: insertError } = await client.from('students').insert({
-      full_name: form.full_name,
-      nis: form.nis,
-      class_id: form.class_id,
-      parent_id: form.parent_id || null,
+    const { data: rpc, error: rpcError } = await client.rpc('create_student', {
+      p_full_name: form.full_name,
+      p_class_name: form.class_name,
+      p_nis: form.nis || null,
     });
-    if (insertError) {
-      if (insertError.code === '23505') {
-        error = 'NIS sudah dipakai siswa lain.';
-      } else {
-        error = 'Gagal menambah siswa. Silakan coba lagi.';
-      }
+    if (rpcError) {
+      error = rpcError.message.includes('NIS')
+        ? 'NIS sudah dipakai siswa lain.'
+        : `Gagal menambah siswa: ${rpcError.message}`;
     } else {
-      success = true;
+      const rows = rpc as { full_name: string; class_name: string; public_code: string; default_pin: string }[] | null;
+      created = rows?.[0] ?? null;
+      form = { full_name: '', nis: '', class_name: '' };
     }
   }
 }
 
-const { data: classes } = await client
-  .from('classes')
-  .select('id, name, academic_year')
-  .order('name');
-
-const { data: parents } = await client
-  .from('profiles')
-  .select('id, full_name')
-  .eq('role', 'parent')
-  .order('full_name');
+const previewPin = form.class_name ? defaultPinForClass(form.class_name) : '';
 ---
 
 <Layout title="Tambah Siswa — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="siswa" />
+  <Nav role={profile.role} current="siswa" />
 
   <header class="mb-4 flex items-center justify-between">
     <h1 class="text-xl font-semibold">Tambah Siswa</h1>
@@ -63,12 +52,14 @@ const { data: parents } = await client
     </a>
   </header>
 
-  {success && (
+  {created && (
     <div
       role="status"
       class="mb-4 rounded-md bg-green-100 px-3 py-2 text-sm text-green-800"
     >
-      ✅ Siswa berhasil ditambahkan.
+      <p class="font-medium">✅ {created.full_name} berhasil ditambahkan.</p>
+      <p class="mt-1">Kelas {created.class_name} · PIN awal: <span class="font-mono font-semibold">{created.default_pin}</span></p>
+      <p class="mt-1 text-xs">Halaman publik: <a href={`/siswa/${created.public_code}`} class="underline">/siswa/{created.public_code}</a></p>
     </div>
   )}
 
@@ -90,48 +81,26 @@ const { data: parents } = await client
     </label>
 
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">NIS</span>
+      <span class="mb-1 block font-medium">NIS <span class="text-xs text-ink/50">(opsional)</span></span>
       <input
         name="nis"
         value={form.nis}
-        required
         class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
 
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Kelas</span>
-      <select
-        name="class_id"
+      <input
+        name="class_name"
+        value={form.class_name}
         required
+        placeholder="mis. 1A"
         class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      >
-        <option value="">Pilih kelas</option>
-        {
-          classes?.map((c) => (
-            <option value={c.id} selected={form.class_id === c.id}>
-              {c.name} ({c.academic_year})
-            </option>
-          ))
-        }
-      </select>
-    </label>
-
-    <label class="block text-sm">
-      <span class="mb-1 block font-medium">Orang tua (opsional)</span>
-      <select
-        name="parent_id"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      >
-        <option value="">Belum ada</option>
-        {
-          parents?.map((p) => (
-            <option value={p.id} selected={form.parent_id === p.id}>
-              {p.full_name}
-            </option>
-          ))
-        }
-      </select>
+      />
+      <span class="mt-1 block text-xs text-ink/50">
+        PIN awal otomatis: {previewPin ? <span class="font-mono font-semibold">{previewPin}</span> : 'ikuti digit pertama kelas ×4'}.
+      </span>
     </label>
 
     <button

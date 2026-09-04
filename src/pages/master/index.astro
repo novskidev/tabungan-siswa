@@ -1,0 +1,192 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Nav from '../../components/Nav.astro';
+import { getSupabase, requireMaster } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const profile = await requireMaster(Astro);
+const { client, url, anonKey } = getSupabase(Astro);
+const anon = createClient(url, anonKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+let error: string | null = null;
+let notice: string | null = null;
+const added = (Astro.url.searchParams.get('added') ?? '').trim();
+if (added) notice = `Guru ${added} berhasil ditambahkan.`;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'add');
+
+  if (action === 'reset') {
+    const email = String(form.get('email') ?? '').trim().toLowerCase();
+    if (!email) error = 'Email wajib diisi.';
+    else {
+      // Hanya akun guru yang terdaftar yang boleh dikirimi link reset.
+      // Tanpa cek ini, siapa pun yang tahu email master bisa memicu reset.
+      const { data: target } = await client.rpc('lookup_teacher_email', {
+        p_email: email,
+      });
+      if (!target) {
+        error = 'Email bukan akun guru terdaftar.';
+      } else {
+        const { error: resetError } = await anon.auth.resetPasswordForEmail(email, {
+          redirectTo: `${Astro.url.origin}/ganti-password`,
+        });
+        if (resetError) error = `Gagal mengirim link reset: ${resetError.message}`;
+        else notice = `Link reset password dikirim ke ${email}.`;
+      }
+    }
+  } else {
+    const email = String(form.get('email') ?? '').trim().toLowerCase();
+    const fullName = String(form.get('full_name') ?? '').trim();
+    const password = String(form.get('password') ?? '');
+    if (!email || !fullName || !password) {
+      error = 'Email, nama, dan password wajib diisi.';
+    } else if (password.length < 6) {
+      error = 'Password minimal 6 karakter.';
+    } else {
+      const { data: signData, error: signError } = await anon.auth.signUp({
+        email,
+        password,
+      });
+      if (signError) {
+        error = signError.message.toLowerCase().includes('already')
+          ? 'Email sudah terdaftar.'
+          : `Gagal membuat akun: ${signError.message}`;
+      } else if (!signData.user?.id) {
+        error = 'Gagal membuat akun. Coba lagi.';
+      } else if (!signData.session) {
+        // Email confirmation aktif: akun dibuat tapi belum bisa login sampai
+        // guru klik link verifikasi di emailnya. Profil tetap dibuat duluan
+        // supaya tidak orphan.
+        const { error: rpcError } = await client.rpc('create_teacher_profile', {
+          p_user_id: signData.user.id,
+          p_full_name: fullName,
+        });
+        if (rpcError && !rpcError.message.includes('sudah ada')) {
+          error = `Gagal menambah guru: ${rpcError.message}`;
+        } else {
+          notice = `Akun ${email} dibuat. Minta guru klik link verifikasi di emailnya sebelum login pertama.`;
+        }
+      } else {
+        const { error: rpcError } = await client.rpc('create_teacher_profile', {
+          p_user_id: signData.user.id,
+          p_full_name: fullName,
+        });
+        if (rpcError) {
+          error = rpcError.message.includes('sudah ada')
+            ? 'Akun ini sudah punya profil guru.'
+            : `Gagal menambah guru: ${rpcError.message}`;
+        } else {
+          return Astro.redirect(`/master?added=${encodeURIComponent(email)}`);
+        }
+      }
+    }
+  }
+}
+
+const { data: teacherRows, error: listError } = await client.rpc('list_teachers');
+if (listError && !error) error = `Gagal memuat daftar guru: ${listError.message}`;
+const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email: string; created_at: string }[]);
+---
+
+<Layout title="Kelola Guru — Tabungan SDN Klagen 1" wide>
+  <Nav role={profile.role} current="guru-admin" />
+
+  <header class="mb-4">
+    <h1 class="text-xl font-semibold">Kelola Guru</h1>
+    <p class="text-sm text-ink/60">Tambah akun guru dan kirim link reset password.</p>
+  </header>
+
+  {error && (
+    <p role="alert" class="mb-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+      {error}
+    </p>
+  )}
+  {notice && (
+    <p role="status" class="mb-4 rounded-md bg-green-100 px-3 py-2 text-sm text-green-800">
+      {notice}
+    </p>
+  )}
+
+  <form method="POST" class="mb-6 space-y-3 rounded-xl bg-brand-soft/40 p-5 shadow-sm">
+    <input type="hidden" name="action" value="add" />
+    <h2 class="text-sm font-medium">Tambah Guru</h2>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Nama</span>
+      <input
+        name="full_name"
+        required
+        placeholder="mis. Bu Guru Kelas 2"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Email</span>
+      <input
+        name="email"
+        type="email"
+        required
+        autocomplete="off"
+        placeholder="guru@sekolah.id"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Password awal</span>
+      <input
+        name="password"
+        type="password"
+        required
+        minlength="6"
+        autocomplete="new-password"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <button
+      type="submit"
+      class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90"
+    >
+      Tambah Guru
+    </button>
+  </form>
+
+  <section>
+    <h2 class="mb-2 text-sm font-medium text-ink/60">Daftar Guru ({teachers.length})</h2>
+    {teachers.length > 0 ? (
+      <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+        {teachers.map((t) => (
+          <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+            <div class="min-w-0">
+              <p class="truncate font-medium">{t.full_name}</p>
+              <p class="truncate text-xs text-ink/50">{t.email}</p>
+            </div>
+            <form method="POST" class="reset-form shrink-0">
+              <input type="hidden" name="action" value="reset" />
+              <input type="hidden" name="email" value={t.email} />
+              <button class="rounded-md bg-ink/5 px-3 py-1.5 text-xs hover:bg-ink/10">
+                Kirim link reset password
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p class="rounded-xl bg-white px-4 py-6 text-center text-sm text-ink/50 shadow-sm">
+        Belum ada guru.
+      </p>
+    )}
+  </section>
+</Layout>
+
+<script is:inline>
+  (function () {
+    document.querySelectorAll('.reset-form').forEach(function (f) {
+      f.addEventListener('submit', function (e) {
+        if (!window.confirm('Kirim link reset password ke guru ini?')) e.preventDefault();
+      });
+    });
+  })();
+</script>

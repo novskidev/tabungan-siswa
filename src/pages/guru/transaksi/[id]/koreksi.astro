@@ -13,7 +13,7 @@ import {
   type TransactionRow,
 } from '../../../../types/database';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
 const { id } = Astro.params;
@@ -74,7 +74,7 @@ const studentName = asStudent(tx.student)?.full_name ?? '—';
 ---
 
 <Layout title="Koreksi Transaksi — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="transaksi" />
+  <Nav role={profile.role} current="transaksi" />
 
   <header class="mb-4">
     <a href="/guru/transaksi" class="text-sm text-ink/60 underline hover:text-ink">

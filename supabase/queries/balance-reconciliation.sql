@@ -1,19 +1,19 @@
--- Sprint 7: Balance reconciliation.
+-- MVP: Balance reconciliation.
 -- For each student: total deposit, total withdrawal, expected balance.
--- Compare with what the UI shows (teacher detail, parent detail).
--- Expected: Expected Balance = Teacher UI = Parent UI.
+-- Single source of truth: balance = SUM(deposit) - SUM(withdrawal).
+-- Compare with what the UI shows (teacher detail, public PIN page).
+-- Expected: Expected Balance = Teacher UI = Public UI.
 
 select
   s.id                                    as student_id,
   s.nis,
   s.full_name                             as student_name,
-  c.name                                  as class_name,
+  s.class_name,
   coalesce(d.total_deposit, 0)            as total_deposit,
   coalesce(w.total_withdrawal, 0)         as total_withdrawal,
   coalesce(d.total_deposit, 0) - coalesce(w.total_withdrawal, 0) as expected_balance,
   s.is_active
 from public.students s
-left join public.classes c on c.id = s.class_id
 left join (
   select student_id, sum(amount) as total_deposit
   from public.transactions
@@ -26,7 +26,7 @@ left join (
   where type = 'withdrawal'
   group by student_id
 ) w on w.student_id = s.id
-order by c.name, s.full_name;
+order by s.class_name, s.full_name;
 
 -- Reconciliation summary: any student whose computed balance is negative
 -- indicates a withdrawal that broke invariant (should be impossible given

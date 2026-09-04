@@ -3,51 +3,45 @@ import Layout from '../../../layouts/Layout.astro';
 import Nav from '../../../components/Nav.astro';
 import { getSupabase, requireRole } from '../../../lib/supabase';
 import { formatRupiah, getStudentBalance } from '../../../lib/transactions';
-import { asClass, asParent, type StudentWithRelations } from '../../../types/database';
+import type { StudentRow } from '../../../types/database';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
-const url = new URL(Astro.request.url);
-const q = (url.searchParams.get('q') ?? '').trim();
-const kelas = (url.searchParams.get('kelas') ?? '').trim();
+const q = (Astro.url.searchParams.get('q') ?? '').trim();
+const kelas = (Astro.url.searchParams.get('kelas') ?? '').trim();
 
-let classes: { id: string; name: string }[] = [];
-{
-  const { data } = await client
-    .from('classes')
-    .select('id, name')
-    .order('name');
-  classes = (data ?? []) as { id: string; name: string }[];
-}
+const { data: classRows } = await client
+  .from('students')
+  .select('class_name')
+  .eq('is_active', true);
+const classes: string[] = [
+  ...new Set(((classRows ?? []) as { class_name: string }[]).map((r) => r.class_name)),
+].sort();
 
-let students: (StudentWithRelations & { balance: number })[] = [];
-{
-  let query = client
-    .from('students')
-    .select(
-      'id, nis, full_name, class_id, parent_id, created_at, updated_at, class:classes(id, name, academic_year), parent:profiles!students_parent_id_fkey(id, full_name)',
-    )
-    .order('full_name');
-  if (q) {
-    query = query.or(`full_name.ilike.%${q}%,nis.ilike.%${q}%`);
-  }
-  if (kelas) {
-    query = query.eq('class_id', kelas);
-  }
-  const { data } = await query;
-  const base = (data as unknown as StudentWithRelations[] | null) ?? [];
-  students = await Promise.all(
-    base.map(async (s) => {
-      const bal = await getStudentBalance(Astro, s.id);
-      return { ...s, balance: bal.balance };
-    }),
-  );
+let query = client
+  .from('students')
+  .select('id, nis, full_name, class_name, public_code, is_active, created_at, updated_at')
+  .order('class_name')
+  .order('full_name');
+if (q) {
+  query = query.or(`full_name.ilike.%${q}%,nis.ilike.%${q}%`);
 }
+if (kelas) {
+  query = query.eq('class_name', kelas);
+}
+const { data } = await query;
+const base = (data as StudentRow[] | null) ?? [];
+const students = await Promise.all(
+  base.map(async (s) => {
+    const bal = await getStudentBalance(Astro, s.id);
+    return { ...s, balance: bal.balance };
+  }),
+);
 ---
 
 <Layout title="Siswa — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="siswa" />
+  <Nav role={profile.role} current="siswa" />
 
   <header class="mb-4 flex items-center justify-between">
     <h1 class="text-xl font-semibold">Daftar Siswa</h1>
@@ -72,7 +66,7 @@ let students: (StudentWithRelations & { balance: number })[] = [];
     >
       <option value="">Semua Kelas</option>
       {classes.map((c) => (
-        <option value={c.id} selected={c.id === kelas}>{c.name}</option>
+        <option value={c} selected={c === kelas}>Kelas {c}</option>
       ))}
     </select>
     <button class="rounded-md bg-ink/5 px-3 py-2 text-sm font-medium hover:bg-ink/10">
@@ -94,10 +88,7 @@ let students: (StudentWithRelations & { balance: number })[] = [];
                 <p class="text-sm font-semibold">{formatRupiah(s.balance)}</p>
               </div>
               <p class="mt-0.5 text-xs text-ink/50">
-                Kelas {asClass(s.class)?.name ?? '—'} · NIS {s.nis}
-              </p>
-              <p class="mt-0.5 text-xs text-ink/60">
-                Orang tua: {asParent(s.parent)?.full_name ?? 'Belum ada'}
+                Kelas {s.class_name}{s.nis ? ` · NIS ${s.nis}` : ''}{s.is_active ? '' : ' · Nonaktif'}
               </p>
             </a>
           </li>
@@ -111,7 +102,7 @@ let students: (StudentWithRelations & { balance: number })[] = [];
               <th class="px-4 py-2 font-medium">Nama</th>
               <th class="px-4 py-2 font-medium">Kelas</th>
               <th class="px-4 py-2 font-medium">Saldo</th>
-              <th class="px-4 py-2 font-medium">Orang Tua</th>
+              <th class="px-4 py-2 font-medium">Status</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-ink/10">
@@ -121,12 +112,12 @@ let students: (StudentWithRelations & { balance: number })[] = [];
                   <a href={`/guru/siswa/${s.id}`} class="hover:underline">
                     {s.full_name}
                   </a>
-                  <p class="text-xs text-ink/50">NIS {s.nis}</p>
+                  {s.nis && <p class="text-xs text-ink/50">NIS {s.nis}</p>}
                 </td>
-                <td class="px-4 py-2">{asClass(s.class)?.name ?? '—'}</td>
+                <td class="px-4 py-2">{s.class_name}</td>
                 <td class="px-4 py-2 font-semibold">{formatRupiah(s.balance)}</td>
                 <td class="px-4 py-2 text-ink/70">
-                  {asParent(s.parent)?.full_name ?? 'Belum ada'}
+                  {s.is_active ? 'Aktif' : 'Nonaktif'}
                 </td>
               </tr>
             ))}

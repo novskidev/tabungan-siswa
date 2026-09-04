@@ -2,8 +2,8 @@ import { defineMiddleware } from 'astro:middleware';
 import { getCurrentProfile, type Role } from './lib/supabase';
 
 const PROTECTED: { prefix: string; role: Role }[] = [
+  { prefix: '/master', role: 'master' },
   { prefix: '/guru', role: 'teacher' },
-  { prefix: '/orangtua', role: 'parent' },
 ];
 
 const PROTECTED_PREFIXES = [
@@ -18,6 +18,8 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     path === '/' ||
     path === '/login' ||
     path === '/dashboard' ||
+    path === '/ganti-password' ||
+    path.startsWith('/siswa/') ||
     path.startsWith('/_astro/') ||
     path.startsWith('/favicon') ||
     path === '/api/auth/login' ||
@@ -38,7 +40,8 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     return ctx.redirect('/login');
   }
 
-  if (match && profile.role !== match.role) {
+  // Master passes teacher gates (handled in requireRole); middleware mirrors it.
+  if (match && profile.role !== match.role && !(match.role === 'teacher' && profile.role === 'master')) {
     return ctx.redirect('/');
   }
 

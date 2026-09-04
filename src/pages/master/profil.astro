@@ -1,0 +1,111 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Nav from '../../components/Nav.astro';
+import { getSupabase, requireMaster } from '../../lib/supabase';
+
+const profile = await requireMaster(Astro);
+const { client } = getSupabase(Astro);
+
+let error: string | null = null;
+let ok: string | null = null;
+let name = profile.full_name;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'rename') {
+    const fullName = String(form.get('full_name') ?? '').trim();
+    if (!fullName) error = 'Nama wajib diisi.';
+    else {
+      const { error: upErr } = await client
+        .from('profiles')
+        .update({ full_name: fullName })
+        .eq('id', profile.id);
+      if (upErr) error = `Gagal menyimpan nama: ${upErr.message}`;
+      else {
+        name = fullName;
+        ok = 'Nama berhasil disimpan.';
+      }
+    }
+  }
+
+  if (action === 'password') {
+    const password = String(form.get('password') ?? '');
+    const confirm = String(form.get('confirm') ?? '');
+    if (password.length < 6) error = 'Password minimal 6 karakter.';
+    else if (password !== confirm) error = 'Konfirmasi password tidak sama.';
+    else {
+      const { error: pwErr } = await client.auth.updateUser({ password });
+      if (pwErr) error = `Gagal mengganti password: ${pwErr.message}`;
+      else ok = 'Password berhasil diganti.';
+    }
+  }
+}
+---
+
+<Layout title="Profil Master — Tabungan SDN Klagen 1" wide>
+  <Nav role={profile.role} current="profil" />
+
+  <header class="mb-4">
+    <h1 class="text-xl font-semibold">Profil</h1>
+    <p class="text-sm text-ink/60">{profile.full_name} · master</p>
+  </header>
+
+  {error && (
+    <p role="alert" class="mb-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+      {error}
+    </p>
+  )}
+  {ok && (
+    <p role="status" class="mb-4 rounded-md bg-green-100 px-3 py-2 text-sm text-green-800">
+      {ok}
+    </p>
+  )}
+
+  <form method="POST" class="mb-4 space-y-3 rounded-xl bg-white p-5 shadow-sm">
+    <input type="hidden" name="action" value="rename" />
+    <h2 class="text-sm font-medium">Nama tampilan</h2>
+    <label class="block text-sm">
+      <input
+        name="full_name"
+        value={name}
+        required
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <button class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90">
+      Simpan Nama
+    </button>
+  </form>
+
+  <form method="POST" class="space-y-3 rounded-xl bg-white p-5 shadow-sm">
+    <input type="hidden" name="action" value="password" />
+    <h2 class="text-sm font-medium">Ganti password sendiri</h2>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Password baru</span>
+      <input
+        name="password"
+        type="password"
+        required
+        minlength="6"
+        autocomplete="new-password"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium">Ulangi password baru</span>
+      <input
+        name="confirm"
+        type="password"
+        required
+        minlength="6"
+        autocomplete="new-password"
+        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+      />
+    </label>
+    <button class="w-full rounded-lg bg-ink/80 px-4 py-2 text-sm font-medium text-white hover:bg-ink">
+      Ganti Password
+    </button>
+  </form>
+</Layout>

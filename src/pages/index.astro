@@ -1,24 +1,72 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { getCurrentProfile } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
+import type { PublicStudent } from '../types/database';
 
-const profile = await getCurrentProfile(Astro);
-if (profile) {
-  return Astro.redirect(profile.role === 'teacher' ? '/guru' : '/orangtua');
+const { client } = getSupabase(Astro);
+const q = (Astro.url.searchParams.get('q') ?? '').trim().toLowerCase();
+
+let students: PublicStudent[] = [];
+try {
+  const { data } = await client.rpc('get_active_students');
+  students = (data ?? []) as PublicStudent[];
+} catch {
+  students = [];
 }
+
+const filtered = q
+  ? students.filter(
+      (s) =>
+        s.full_name.toLowerCase().includes(q) ||
+        s.class_name.toLowerCase().includes(q),
+    )
+  : students;
 ---
 
 <Layout title="Tabungan SDN Klagen 1">
-  <section class="space-y-6 pt-12 text-center">
-    <h1 class="text-3xl font-semibold tracking-tight">Tabungan SDN Klagen 1</h1>
-    <p class="text-base text-ink/70">
-      Sistem tabungan siswa sederhana untuk sekolah.
+  <section class="space-y-5 pt-6">
+    <header class="space-y-1 text-center">
+      <h1 class="text-2xl font-semibold">Tabungan SDN Klagen 1</h1>
+      <p class="text-sm text-ink/60">
+        Pilih nama anak, masukkan PIN 4 digit untuk melihat saldo.
+      </p>
+    </header>
+
+    <form method="GET" action="/" class="flex gap-2">
+      <input
+        name="q"
+        value={Astro.url.searchParams.get('q') ?? ''}
+        placeholder="Cari nama atau kelas"
+        autocomplete="off"
+        class="flex-1 rounded-md border border-ink/15 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
+      />
+      <button class="rounded-md bg-ink/5 px-4 py-2 text-sm font-medium hover:bg-ink/10">
+        Cari
+      </button>
+    </form>
+
+    {filtered.length > 0 ? (
+      <ul class="space-y-2">
+        {filtered.map((s) => (
+          <li>
+            <a
+              href={`/siswa/${s.public_code}`}
+              class="block rounded-xl bg-white px-4 py-3 shadow-sm hover:bg-brand-soft/30"
+            >
+              <p class="font-medium">{s.full_name}</p>
+              <p class="text-xs text-ink/50">Kelas {s.class_name}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+        {q ? 'Siswa tidak ditemukan.' : 'Belum ada data siswa.'}
+      </p>
+    )}
+
+    <p class="text-center text-xs text-ink/50">
+      <a href="/login" class="underline hover:text-brand">Login Guru</a>
     </p>
-    <a
-      href="/login"
-      class="inline-block rounded-lg bg-brand px-6 py-3 text-base font-medium text-white shadow-sm transition hover:bg-brand/90"
-    >
-      Login
-    </a>
   </section>
 </Layout>

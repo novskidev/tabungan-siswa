@@ -1,0 +1,272 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getSupabase } from '../../lib/supabase';
+import {
+  formatRupiah,
+  formatTimeShort,
+  groupByDay,
+} from '../../lib/transactions';
+import type { VerifiedSavings, PublicHistoryItem } from '../../types/database';
+
+const { public_code } = Astro.params;
+if (!public_code) return Astro.redirect('/');
+
+const { client } = getSupabase(Astro);
+
+let pinError: string | null = null;
+let savings: VerifiedSavings | null = null;
+let groups: { key: string; label: string; items: PublicHistoryItem[] }[] = [];
+let authedPin: string | null = null;
+let pinChangeOk: string | null = null;
+let pinChangeError: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'login');
+  if (action === 'change_pin') {
+    const oldPin = String(form.get('old_pin') ?? '').trim();
+    const newPin = String(form.get('new_pin') ?? '').trim();
+    const confirmPin = String(form.get('confirm_pin') ?? '').trim();
+    if (!/^\d{4}$/.test(newPin)) {
+      pinChangeError = 'PIN baru harus 4 digit angka.';
+    } else if (newPin !== confirmPin) {
+      pinChangeError = 'Konfirmasi PIN tidak sama.';
+    } else if (newPin === oldPin) {
+      pinChangeError = 'PIN baru sama dengan PIN lama.';
+    } else {
+      const { error: changeError } = await client.rpc('change_student_pin', {
+        p_code: public_code,
+        p_old_pin: oldPin,
+        p_new_pin: newPin,
+      });
+      if (changeError) {
+        pinChangeError = changeError.message.includes('pin lama salah')
+          ? 'PIN lama salah. Silakan coba lagi.'
+          : 'Gagal mengganti PIN. Silakan coba lagi.';
+      } else {
+        authedPin = newPin;
+        pinChangeOk = 'PIN berhasil diganti.';
+        const { data } = await client.rpc('verify_student_pin', {
+          p_code: public_code,
+          p_pin: newPin,
+        });
+        savings = (data as VerifiedSavings[] | null)?.[0] ?? null;
+        const { data: hist } = await client.rpc('get_student_history', {
+          p_code: public_code,
+          p_pin: newPin,
+        });
+        groups = groupByDay((hist ?? []) as PublicHistoryItem[]);
+      }
+    }
+  } else {
+  const pin = String(form.get('pin') ?? '').trim();
+  if (!/^\d{4}$/.test(pin)) {
+    pinError = 'PIN harus 4 digit angka.';
+  } else {
+    const { data } = await client.rpc('verify_student_pin', {
+      p_code: public_code,
+      p_pin: pin,
+    });
+    const row = (data as VerifiedSavings[] | null)?.[0] ?? null;
+    if (!row) {
+      pinError = 'PIN salah. Silakan coba lagi.';
+    } else {
+      savings = row;
+      authedPin = pin;
+      const { data: hist } = await client.rpc('get_student_history', {
+        p_code: public_code,
+        p_pin: pin,
+      });
+      groups = groupByDay((hist ?? []) as PublicHistoryItem[]);
+    }
+  }
+  }
+}
+---
+
+<Layout title={savings ? `${savings.full_name} — Tabungan SDN Klagen 1` : 'Lihat Tabungan — Tabungan SDN Klagen 1'}>
+  <section class="space-y-5 pt-6">
+    <header>
+      <a href="/" class="text-sm text-ink/60 underline hover:text-ink">← Semua Siswa</a>
+      {savings ? (
+        <>
+          <h1 class="mt-1 text-xl font-semibold">{savings.full_name}</h1>
+          <p class="text-sm text-ink/60">Kelas {savings.class_name}</p>
+        </>
+      ) : (
+        <h1 class="mt-1 text-xl font-semibold">Lihat Tabungan</h1>
+      )}
+    </header>
+
+    {!savings && (
+      <form method="POST" class="space-y-4 rounded-xl bg-brand-soft/40 p-5 shadow-sm">
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium">PIN 4 digit</span>
+          <input
+            name="pin"
+            type="password"
+            required
+            inputmode="numeric"
+            pattern="[0-9]{4}"
+            maxlength="4"
+            autocomplete="off"
+            placeholder="••••"
+            autofocus
+            class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-center text-2xl tracking-[0.5em] outline-none focus:border-brand"
+          />
+          <span class="mt-1 block text-xs text-ink/50">
+            Tanya PIN ke guru kelas jika belum tahu.
+          </span>
+        </label>
+
+        {pinError && (
+          <p role="alert" class="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+            {pinError}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90"
+        >
+          Lihat Saldo
+        </button>
+      </form>
+    )}
+
+    {savings && (
+      <article class="space-y-5">
+        <section class="rounded-xl bg-brand-soft/60 p-5 shadow-sm">
+          <p class="text-sm text-ink/60">Saldo Tabungan</p>
+          <p class="mt-1 text-3xl font-semibold">{formatRupiah(savings.balance)}</p>
+        </section>
+
+        <section class="grid grid-cols-2 gap-3">
+          <div class="rounded-xl bg-white p-4 shadow-sm">
+            <p class="text-xs text-ink/60">Setoran</p>
+            <p class="mt-1 text-lg font-semibold text-green-700">
+              {formatRupiah(savings.total_deposit)}
+            </p>
+          </div>
+          <div class="rounded-xl bg-white p-4 shadow-sm">
+            <p class="text-xs text-ink/60">Penarikan</p>
+            <p class="mt-1 text-lg font-semibold text-red-700">
+              {formatRupiah(savings.total_withdrawal)}
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="mb-3 text-sm font-medium text-ink/60">Riwayat Transaksi</h2>
+          {groups.length > 0 ? (
+            <div class="space-y-4">
+              {groups.map((g) => (
+                <div>
+                  <p class="mb-2 text-xs font-medium uppercase tracking-wide text-ink/50">
+                    {g.label}
+                  </p>
+                  <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+                    {g.items.map((t) => (
+                      <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <div class="min-w-0">
+                          <p class="font-medium">
+                            {t.type === 'deposit' ? 'Setoran' : 'Penarikan'}
+                          </p>
+                          <p class="text-xs text-ink/50">{formatTimeShort(t.created_at)}</p>
+                          {t.note && (
+                            <p class="mt-0.5 truncate text-xs text-ink/60">"{t.note}"</p>
+                          )}
+                        </div>
+                        <p
+                          class:list={[
+                            'shrink-0 font-medium',
+                            t.type === 'deposit' ? 'text-green-700' : 'text-red-700',
+                          ]}
+                        >
+                          {t.type === 'deposit' ? '+' : '−'}
+                          {formatRupiah(Number(t.amount))}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+              Belum ada transaksi tabungan.
+            </p>
+          )}
+        </section>
+        <section>
+          <details class="rounded-xl bg-white shadow-sm">
+            <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-brand">
+              Ganti PIN
+            </summary>
+            <form method="POST" class="space-y-3 border-t border-ink/10 px-4 py-4">
+              <input type="hidden" name="action" value="change_pin" />
+              <label class="block text-sm">
+                <span class="mb-1 block font-medium">PIN lama</span>
+                <input
+                  name="old_pin"
+                  type="password"
+                  required
+                  inputmode="numeric"
+                  pattern="[0-9]{4}"
+                  maxlength="4"
+                  autocomplete="off"
+                  placeholder="••••"
+                  class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-center text-xl tracking-[0.5em] outline-none focus:border-brand"
+                />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-medium">PIN baru</span>
+                <input
+                  name="new_pin"
+                  type="password"
+                  required
+                  inputmode="numeric"
+                  pattern="[0-9]{4}"
+                  maxlength="4"
+                  autocomplete="off"
+                  placeholder="••••"
+                  class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-center text-xl tracking-[0.5em] outline-none focus:border-brand"
+                />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-medium">Ulangi PIN baru</span>
+                <input
+                  name="confirm_pin"
+                  type="password"
+                  required
+                  inputmode="numeric"
+                  pattern="[0-9]{4}"
+                  maxlength="4"
+                  autocomplete="off"
+                  placeholder="••••"
+                  class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-center text-xl tracking-[0.5em] outline-none focus:border-brand"
+                />
+              </label>
+              {pinChangeOk && (
+                <p role="status" class="rounded-md bg-green-100 px-3 py-2 text-sm text-green-800">
+                  {pinChangeOk}
+                </p>
+              )}
+              {pinChangeError && (
+                <p role="alert" class="rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+                  {pinChangeError}
+                </p>
+              )}
+              <button
+                type="submit"
+                class="w-full rounded-lg bg-ink/80 px-4 py-2 text-sm font-medium text-white transition hover:bg-ink"
+              >
+                Simpan PIN Baru
+              </button>
+            </form>
+          </details>
+        </section>
+      </article>
+    )}
+  </section>
+</Layout>

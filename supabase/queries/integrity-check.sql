@@ -1,20 +1,21 @@
--- Sprint 7: Database integrity check.
+-- MVP: Database integrity check.
 -- Run in Supabase SQL Editor. Expected output: zero rows for each query.
 -- Do NOT delete rows just to make these clean — investigate root cause first.
 
--- 1) Students without a class (class_id must exist).
-select s.id, s.nis, s.full_name
-from public.students s
-left join public.classes c on c.id = s.class_id
-where c.id is null;
+-- 1) Students missing class_name, public_code, or pin_hash.
+select id, nis, full_name
+from public.students
+where class_name is null or btrim(class_name) = ''
+   or public_code is null or btrim(public_code) = ''
+   or pin_hash is null or btrim(pin_hash) = '';
 
--- 2) Students whose parent_id doesn't resolve to a profile.
-select s.id, s.nis, s.full_name, s.parent_id
-from public.students s
-left join public.profiles p on p.id = s.parent_id
-where s.parent_id is not null and p.id is null;
+-- 2) Duplicate public_code (unique index blocks; should never be).
+select public_code, count(*) as n
+from public.students
+group by public_code
+having count(*) > 1;
 
--- 3) Transactions whose student doesn't exist (FK CASCADE blocks; should never be).
+-- 3) Transactions whose student doesn't exist (FK RESTRICT blocks; should never be).
 select t.id, t.student_id
 from public.transactions t
 left join public.students s on s.id = t.student_id
@@ -36,7 +37,7 @@ select id, student_id, type
 from public.transactions
 where type not in ('deposit', 'withdrawal');
 
--- 7) Corrections pointing to a non-existent original (FK CASCADE blocks).
+-- 7) Corrections pointing to a non-existent original (FK RESTRICT blocks).
 select t.id, t.correction_of
 from public.transactions t
 left join public.transactions o on o.id = t.correction_of
@@ -54,3 +55,10 @@ select p.id, p.full_name, p.role
 from public.profiles p
 left join auth.users u on u.id = p.id
 where u.id is null;
+
+-- 10) Anon table access must stay zero (parents go through RPCs only).
+select schemaname, tablename, policyname, roles
+from pg_policies
+where schemaname = 'public'
+  and (tablename = 'students' or tablename = 'transactions')
+  and 'anon' = any (roles);

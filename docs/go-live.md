@@ -24,46 +24,51 @@ Work through these in order before declaring the project production-ready.
 - [ ] Environment variables (Production):
       - `PUBLIC_SUPABASE_URL` = production URL
       - `PUBLIC_SUPABASE_ANON_KEY` = production anon key
-- [ ] KV binding `SESSION` exists and is bound (Settings → Functions → KV
-      namespace bindings).
+- [ ] No KV binding needed (auth uses `sb-access-token` cookies, not KV).
 
 ## 3. RLS verified
 
-- [ ] All four tables have `enable row level security`.
+- [ ] All three tables (`profiles`, `students`, `transactions`) have
+      `enable row level security`.
 - [ ] No policy uses `USING (true)`.
-- [ ] No policy targets `anon`.
-- [ ] Parent can only SELECT their own children and their own children's
-      transactions. Cross-parent access returns 0 rows.
+- [ ] No table policy targets `anon` (parents go through `SECURITY DEFINER`
+      RPCs only).
+- [ ] `verify_student_pin` with a wrong PIN returns 0 rows; a neighbour's
+      `public_code` + wrong PIN cannot read another child's history.
 - [ ] Teacher INSERT on `transactions` carries `created_by = auth.uid()`.
 - [ ] No UPDATE or DELETE policy exists on `transactions`.
 - [ ] Run `supabase/queries/integrity-check.sql`. Expected output: zero rows.
 
 ## 4. Data
 
-- [ ] 22 students loaded with their class and parent assignments.
+- [ ] 22 students loaded with `class_name`, `public_code`, and bcrypt
+      `pin_hash` (default PIN = first digit of class ×4).
 - [ ] Run `supabase/queries/balance-reconciliation.sql`. Compare each
       student's expected balance to:
       - `/guru/siswa/[id]` saldo card
-      - `/orangtua/anak/[id]` saldo header
+      - `/siswa/[public_code]` saldo header (after entering PIN)
       They must match exactly.
 
 ## 5. Accounts
 
 - [ ] Teacher accounts exist in `auth.users` with corresponding
-      `public.profiles` rows (`role = 'teacher'`).
-- [ ] Parent accounts exist in `auth.users` with corresponding
-      `public.profiles` rows (`role = 'parent'`).
-- [ ] Each parent is linked to one or more students via `students.parent_id`.
-- [ ] Test sign-in with at least one teacher and one parent in production
-      via the browser.
+      `public.profiles` rows (`role = 'teacher'`). No parent accounts —
+      parents are anonymous via `(public_code, PIN)`.
+- [ ] Master account (`novskidev@gmail.com`, `role = 'master'`) exists.
+      Verify: `select role from public.profiles` shows `master`.
+- [ ] Test teacher sign-in in production via the browser.
+- [ ] Test master flow: `/master` tambah guru, `/master/profil` ganti
+      password sendiri, kirim link reset ke guru, guru buka link
+      `/ganti-password` dan simpan password baru.
 
 ## 6. Smoke test against production URL
 
 - [ ] Teacher signs in.
 - [ ] Teacher records a deposit of Rp 10.000 on student A.
 - [ ] `/guru` shows updated saldo for student A.
-- [ ] Parent of student A signs in.
-- [ ] `/orangtua` and `/orangtua/anak/[id]` show the same saldo.
+- [ ] Parent flow for student A: open `/`, pick the name, enter PIN on
+      `/siswa/[public_code]` — shows the same saldo.
+- [ ] Wrong PIN is rejected with a generic error; no data leaks.
 - [ ] Teacher records a withdrawal of Rp 5.000.
 - [ ] Parent re-loads — saldo updated, history shows both rows.
 - [ ] Teacher opens one of the transactions, runs Koreksi with a reason.
@@ -81,7 +86,7 @@ Test at 375 / 390 / 412px (Chrome DevTools device emulation is fine):
 - [ ] Teacher dashboard: search input is full-width, quick-amount buttons
       wrap cleanly.
 - [ ] Withdrawal dialog: dialog fits within viewport, scrollable if needed.
-- [ ] Parent dashboard: saldo is the most prominent element on the card.
+- [ ] Public PIN page: saldo is the most prominent element on the card.
 - [ ] Transaction history: rows do not overflow; truncate with ellipsis
       if text is long.
 - [ ] Navigation bar: 4 teacher links + Keluar fit on a 375px viewport
@@ -99,7 +104,7 @@ Test at 1366 / 1440 / 1920px:
 ## 9. Accessibility
 
 - [ ] Tab through `/login`, `/guru`, `/guru/siswa`, `/guru/transaksi`,
-      `/orangtua`, `/orangtua/anak/[id]`. Every interactive element
+      `/`, `/siswa/[public_code]`. Every interactive element
       receives visible focus.
 - [ ] Submit a form via keyboard only (no mouse).
 - [ ] Open the withdrawal dialog via keyboard, dismiss with Escape, submit.

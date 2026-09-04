@@ -3,7 +3,7 @@ import Layout from '../../../../layouts/Layout.astro';
 import Nav from '../../../../components/Nav.astro';
 import { getSupabase, requireRole } from '../../../../lib/supabase';
 
-await requireRole(Astro, 'teacher');
+const profile = await requireRole(Astro, 'teacher');
 const { client } = getSupabase(Astro);
 
 const { id } = Astro.params;
@@ -12,7 +12,7 @@ let error: string | null = null;
 
 const { data: student, error: fetchError } = await client
   .from('students')
-  .select('id, nis, full_name, class_id, parent_id')
+  .select('id, nis, full_name, class_name')
   .eq('id', id)
   .single();
 
@@ -21,10 +21,9 @@ if (fetchError || !student) {
 }
 
 let form = {
-  full_name: student.full_name,
-  nis: student.nis,
-  class_id: student.class_id,
-  parent_id: student.parent_id ?? '',
+  full_name: student.full_name as string,
+  nis: (student.nis as string | null) ?? '',
+  class_name: student.class_name as string,
 };
 
 if (Astro.request.method === 'POST') {
@@ -32,49 +31,33 @@ if (Astro.request.method === 'POST') {
   form = {
     full_name: String(data.get('full_name') ?? '').trim(),
     nis: String(data.get('nis') ?? '').trim(),
-    class_id: String(data.get('class_id') ?? '').trim(),
-    parent_id: String(data.get('parent_id') ?? '').trim(),
+    class_name: String(data.get('class_name') ?? '').trim(),
   };
 
   if (!form.full_name) error = 'Nama wajib diisi.';
-  else if (!form.nis) error = 'NIS wajib diisi.';
-  else if (!form.class_id) error = 'Kelas wajib dipilih.';
+  else if (!form.class_name) error = 'Kelas wajib diisi.';
   else {
     const { error: updateError } = await client
       .from('students')
       .update({
         full_name: form.full_name,
-        nis: form.nis,
-        class_id: form.class_id,
-        parent_id: form.parent_id || null,
+        nis: form.nis || null,
+        class_name: form.class_name,
       })
       .eq('id', id);
     if (updateError) {
-      if (updateError.code === '23505') {
-        error = 'NIS sudah dipakai siswa lain.';
-      } else {
-        error = 'Gagal memperbarui siswa. Silakan coba lagi.';
-      }
+      error = updateError.code === '23505'
+        ? 'NIS sudah dipakai siswa lain.'
+        : `Gagal memperbarui siswa: ${updateError.message}`;
     } else {
       return Astro.redirect(`/guru/siswa/${id}`);
     }
   }
 }
-
-const { data: classes } = await client
-  .from('classes')
-  .select('id, name, academic_year')
-  .order('name');
-
-const { data: parents } = await client
-  .from('profiles')
-  .select('id, full_name')
-  .eq('role', 'parent')
-  .order('full_name');
 ---
 
 <Layout title="Edit Siswa — Tabungan SDN Klagen 1" wide>
-  <Nav role="teacher" current="siswa" />
+  <Nav role={profile.role} current="siswa" />
 
   <header class="mb-4 flex items-center justify-between">
     <h1 class="text-xl font-semibold">Edit Siswa</h1>
@@ -104,48 +87,23 @@ const { data: parents } = await client
     </label>
 
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">NIS</span>
+      <span class="mb-1 block font-medium">NIS <span class="text-xs text-ink/50">(opsional)</span></span>
       <input
         name="nis"
         value={form.nis}
-        required
         class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
 
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Kelas</span>
-      <select
-        name="class_id"
+      <input
+        name="class_name"
+        value={form.class_name}
         required
+        placeholder="mis. 1A"
         class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      >
-        <option value="">Pilih kelas</option>
-        {
-          classes?.map((c) => (
-            <option value={c.id} selected={form.class_id === c.id}>
-              {c.name} ({c.academic_year})
-            </option>
-          ))
-        }
-      </select>
-    </label>
-
-    <label class="block text-sm">
-      <span class="mb-1 block font-medium">Orang tua</span>
-      <select
-        name="parent_id"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      >
-        <option value="">Belum ada</option>
-        {
-          parents?.map((p) => (
-            <option value={p.id} selected={form.parent_id === p.id}>
-              {p.full_name}
-            </option>
-          ))
-        }
-      </select>
+      />
     </label>
 
     <button

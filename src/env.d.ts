@@ -5,7 +5,7 @@ declare namespace App {
     profile?: {
       id: string;
       full_name: string;
-      role: 'teacher' | 'parent';
+      role: 'teacher' | 'master';
       created_at: string;
     };
   }
