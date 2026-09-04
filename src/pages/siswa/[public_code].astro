@@ -11,7 +11,7 @@ import type { VerifiedSavings, PublicHistoryItem } from '../../types/database';
 const { public_code } = Astro.params;
 if (!public_code) return Astro.redirect('/');
 
-const { client } = getSupabase(Astro);
+const { client } = getSupabase(Astro, { public: true });
 
 let pinError: string | null = null;
 let savings: VerifiedSavings | null = null;

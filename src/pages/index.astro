@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import { getSupabase } from '../lib/supabase';
 import type { PublicStudent } from '../types/database';
 
-const { client } = getSupabase(Astro);
+const { client } = getSupabase(Astro, { public: true });
 const q = (Astro.url.searchParams.get('q') ?? '').trim().toLowerCase();
 
 let students: PublicStudent[] = [];

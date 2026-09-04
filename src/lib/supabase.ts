@@ -60,9 +60,11 @@ export async function setAuthSession(
   return !error;
 }
 
-export function getSupabase(ctx: APIContext): AppSupabase {
+export function getSupabase(ctx: APIContext, opts?: { public?: boolean }): AppSupabase {
   const { url, anonKey } = readConfig();
-  const token = getAccessToken(ctx);
+  // Halaman publik tidak boleh meneruskan cookie auth: token kadaluarsa
+  // membuat PostgREST menolak request (401) alih-alih fallback ke anon.
+  const token = opts?.public ? null : getAccessToken(ctx);
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const client = createClient(url, anonKey, {
