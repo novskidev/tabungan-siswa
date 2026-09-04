@@ -179,13 +179,17 @@ grant execute on function public.reset_student_balance(uuid) to authenticated;
 -- list_teachers(): master-only teacher list (SECURITY DEFINER).
 -- create_teacher_profile(uuid, text): master-only teacher profile insert.
 -- lookup_teacher_email(text): master-only teacher email check for reset gating.
+-- confirm_teacher_email(uuid): master-only auto-activate teacher account (no
+-- verification click needed).
 -- Full bodies in 20250904000004_master_role.sql.
 revoke all on function public.list_teachers() from public;
 revoke all on function public.create_teacher_profile(uuid, text) from public;
 revoke all on function public.lookup_teacher_email(text) from public;
+revoke all on function public.confirm_teacher_email(uuid) from public;
 grant execute on function public.list_teachers() to authenticated;
 grant execute on function public.create_teacher_profile(uuid, text) to authenticated;
 grant execute on function public.lookup_teacher_email(text) to authenticated;
+grant execute on function public.confirm_teacher_email(uuid) to authenticated;
 
 -- ---------- public RPCs (anon-safe, SECURITY DEFINER) ----------
 -- get_active_students(): public student list for `/`.

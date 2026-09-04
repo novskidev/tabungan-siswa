@@ -429,3 +429,46 @@ $$;
 
 revoke all on function public.lookup_teacher_email(text) from public;
 grant execute on function public.lookup_teacher_email(text) to authenticated;
+
+-- Master auto-confirms teacher emails so new accounts work immediately
+-- without clicking a verification link. All accounts are created by the
+-- trusted master (no public signup page), so confirmation adds no security.
+create or replace function public.confirm_teacher_email(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+begin
+  if v_uid is null then
+    raise exception 'unauthenticated' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.profiles p
+                 where p.id = v_uid and p.role = 'master') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  if p_user_id = v_uid then
+    raise exception 'tidak bisa untuk akun sendiri' using errcode = '42501';
+  end if;
+
+  if exists (select 1 from public.profiles where id = p_user_id and role = 'master') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  update auth.users
+     set email_confirmed_at = coalesce(email_confirmed_at, now()),
+         confirmed_at = coalesce(confirmed_at, now()),
+         updated_at = now()
+   where id = p_user_id;
+  if not found then
+    raise exception 'akun tidak ditemukan' using errcode = 'P0002';
+  end if;
+end;
+$$;
+
+revoke all on function public.confirm_teacher_email(uuid) from public;
+grant execute on function public.confirm_teacher_email(uuid) to authenticated;

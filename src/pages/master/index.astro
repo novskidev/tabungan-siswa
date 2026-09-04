@@ -57,30 +57,26 @@ if (Astro.request.method === 'POST') {
           : `Gagal membuat akun: ${signError.message}`;
       } else if (!signData.user?.id) {
         error = 'Gagal membuat akun. Coba lagi.';
-      } else if (!signData.session) {
-        // Email confirmation aktif: akun dibuat tapi belum bisa login sampai
-        // guru klik link verifikasi di emailnya. Profil tetap dibuat duluan
-        // supaya tidak orphan.
-        const { error: rpcError } = await client.rpc('create_teacher_profile', {
-          p_user_id: signData.user.id,
-          p_full_name: fullName,
-        });
-        if (rpcError && !rpcError.message.includes('sudah ada')) {
-          error = `Gagal menambah guru: ${rpcError.message}`;
-        } else {
-          notice = `Akun ${email} dibuat. Minta guru klik link verifikasi di emailnya sebelum login pertama.`;
-        }
       } else {
-        const { error: rpcError } = await client.rpc('create_teacher_profile', {
+        // Akun buatan master langsung aktif: auto-konfirmasi email supaya
+        // guru bisa login tanpa klik link verifikasi.
+        const { error: confirmError } = await client.rpc('confirm_teacher_email', {
           p_user_id: signData.user.id,
-          p_full_name: fullName,
         });
-        if (rpcError) {
-          error = rpcError.message.includes('sudah ada')
-            ? 'Akun ini sudah punya profil guru.'
-            : `Gagal menambah guru: ${rpcError.message}`;
+        if (confirmError) {
+          error = `Akun dibuat tapi gagal diaktifkan: ${confirmError.message}`;
         } else {
-          return Astro.redirect(`/master?added=${encodeURIComponent(email)}`);
+          const { error: rpcError } = await client.rpc('create_teacher_profile', {
+            p_user_id: signData.user.id,
+            p_full_name: fullName,
+          });
+          if (rpcError) {
+            error = rpcError.message.includes('sudah ada')
+              ? 'Akun ini sudah punya profil guru.'
+              : `Gagal menambah guru: ${rpcError.message}`;
+          } else {
+            return Astro.redirect(`/master?added=${encodeURIComponent(email)}`);
+          }
         }
       }
     }
