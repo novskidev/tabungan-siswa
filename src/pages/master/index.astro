@@ -52,9 +52,14 @@ if (Astro.request.method === 'POST') {
         password,
       });
       if (signError) {
-        error = signError.message.toLowerCase().includes('already')
-          ? 'Email sudah terdaftar.'
-          : `Gagal membuat akun: ${signError.message}`;
+        const msg = signError.message.toLowerCase();
+        if (msg.includes('already')) {
+          error = 'Email sudah terdaftar.';
+        } else if (msg.includes('rate limit')) {
+          error = 'Terlalu banyak percobaan. Tunggu ±1 jam, atau matikan Confirm email di Dashboard → Authentication → Settings supaya akun langsung aktif tanpa email.';
+        } else {
+          error = `Gagal membuat akun: ${signError.message}`;
+        }
       } else if (!signData.user?.id) {
         error = 'Gagal membuat akun. Coba lagi.';
       } else {
