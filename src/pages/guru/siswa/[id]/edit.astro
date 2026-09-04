@@ -77,14 +77,14 @@ if (Astro.request.method === 'POST') {
     </div>
   )}
 
-  <form method="POST" class="space-y-4 rounded-xl bg-brand-soft/40 p-5 shadow-sm">
+  <form method="POST" class="space-y-4 rounded-2xl card-soft p-5">
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Nama siswa</span>
       <input
         name="full_name"
         value={form.full_name}
         required
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
 
@@ -93,7 +93,7 @@ if (Astro.request.method === 'POST') {
       <input
         name="nis"
         value={form.nis}
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
 
@@ -105,14 +105,14 @@ if (Astro.request.method === 'POST') {
           <input
             value={`Kelas ${teacherClass}`}
             disabled
-            class="w-full rounded-md border border-ink/15 bg-ink/5 px-3 py-2 text-base"
+            class="w-full rounded-xl border-2 border-ink/10 bg-ink/5 px-3 py-2 text-base"
           />
         </>
       ) : (
         <select
           name="class_name"
           required
-          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+          class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
         >
           {['1', '2', '3', '4', '5', '6'].map(
             (k) => (
@@ -127,7 +127,7 @@ if (Astro.request.method === 'POST') {
 
     <button
       type="submit"
-      class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90"
+      class="w-full rounded-full btn-candy-brand px-4 py-2.5 text-base font-medium"
     >
       Simpan Perubahan
     </button>

@@ -113,10 +113,10 @@ const studentName = asStudent(tx.student)?.full_name ?? '—';
     ) : (
       <form
         method="POST"
-        class="space-y-5 rounded-xl bg-white p-5 shadow-sm"
+        class="space-y-5 rounded-2xl card-cute p-5"
         id="correction-form"
       >
-        <div class="rounded-lg bg-brand-soft/40 p-4 text-sm">
+        <div class="rounded-2xl card-soft p-4 text-sm">
           <p class="font-medium">{studentName}</p>
           <p class="mt-1 text-ink/70">
             {tx.type === 'deposit' ? 'Setoran' : 'Penarikan'}
@@ -145,7 +145,7 @@ const studentName = asStudent(tx.student)?.full_name ?? '—';
             minlength="3"
             maxlength="500"
             placeholder="Misalnya: salah nominal, seharusnya Rp5.000"
-            class="mt-1 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            class="mt-1 w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
             >{existingReason}</textarea
           >
           <span class="mt-1 block text-xs text-ink/50">

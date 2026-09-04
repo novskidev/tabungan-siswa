@@ -1,14 +1,129 @@
 @import "tailwindcss";
 
+/*
+  Tema "Celengan Ceria" — SDN Klagen 1
+  Dunia tabungan sekolah: koin, celengan, warna permen.
+  Boldness dipusatkan di maskot & tombol candy; sisanya tenang.
+*/
 @theme {
-  --color-brand: #4f7c6a;
-  --color-brand-soft: #e9f1ec;
-  --color-ink: #1f2937;
-  --color-paper: #fafaf7;
+  --color-brand: #38b6ff;
+  --color-brand-deep: #0e7ac4;
+  --color-brand-soft: #e3f4ff;
+  --color-sun: #ffc53d;
+  --color-sun-soft: #fff3d1;
+  --color-mint: #2fbf71;
+  --color-mint-soft: #e2f8ec;
+  --color-coral: #ff5d73;
+  --color-coral-soft: #ffe4e8;
+  --color-ink: #3b3653;
+  --color-paper: #fff9ee;
+  --font-fredoka: "Fredoka", system-ui, sans-serif;
 }
 
 html {
   background-color: var(--color-paper);
+  /* titik-titik koin halus */
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--color-brand) 14%, transparent) 1.5px,
+    transparent 1.5px
+  );
+  background-size: 22px 22px;
   color: var(--color-ink);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-fredoka), system-ui, sans-serif;
+}
+
+/* ---------- kartu & panel ---------- */
+.card-cute {
+  background: #fff;
+  border: 2px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+  box-shadow: 0 3px 0 rgba(59, 54, 83, 0.07);
+  border-radius: 1rem;
+}
+.card-soft {
+  background: var(--color-brand-soft);
+  border: 2px solid color-mix(in srgb, var(--color-brand) 25%, transparent);
+  box-shadow: 0 3px 0 rgba(14, 122, 196, 0.12);
+  border-radius: 1rem;
+}
+.card-sun {
+  background: var(--color-sun-soft);
+  border: 2px solid color-mix(in srgb, var(--color-sun) 55%, transparent);
+  box-shadow: 0 3px 0 rgba(183, 121, 31, 0.15);
+  border-radius: 1rem;
+}
+
+/* ---------- tombol candy 3D ---------- */
+.btn-candy-brand,
+.btn-candy-mint,
+.btn-candy-coral,
+.btn-candy-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.btn-candy-brand {
+  color: #fff;
+  background: var(--color-brand);
+  box-shadow: 0 4px 0 var(--color-brand-deep);
+}
+.btn-candy-mint {
+  color: #fff;
+  background: var(--color-mint);
+  box-shadow: 0 4px 0 #1d8f53;
+}
+.btn-candy-coral {
+  color: #fff;
+  background: var(--color-coral);
+  box-shadow: 0 4px 0 #d63f54;
+}
+.btn-candy-ghost {
+  color: var(--color-ink);
+  background: #fff;
+  border: 2px solid color-mix(in srgb, var(--color-ink) 14%, transparent);
+  box-shadow: 0 3px 0 rgba(59, 54, 83, 0.1);
+}
+.btn-candy-brand:hover,
+.btn-candy-mint:hover,
+.btn-candy-coral:hover {
+  filter: brightness(1.06);
+}
+.btn-candy-brand:active,
+.btn-candy-mint:active,
+.btn-candy-coral:active,
+.btn-candy-ghost:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(59, 54, 83, 0.2);
+}
+.btn-candy-brand:focus-visible,
+.btn-candy-mint:focus-visible,
+.btn-candy-coral:focus-visible,
+.btn-candy-ghost:focus-visible {
+  outline: 3px solid var(--color-sun);
+  outline-offset: 2px;
+}
+
+/* ---------- navigasi pil ---------- */
+.nav-pill {
+  border: 2px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(59, 54, 83, 0.07);
+  border-radius: 9999px;
+}
+.nav-pill a.active,
+.nav-pill .active {
+  background: var(--color-sun-soft);
+  border: 2px solid var(--color-sun);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-candy-brand,
+  .btn-candy-mint,
+  .btn-candy-coral,
+  .btn-candy-ghost {
+    transition: none;
+  }
 }

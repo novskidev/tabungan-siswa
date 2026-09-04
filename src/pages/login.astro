@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import Piggy from '../components/Piggy.astro';
 import { getCurrentUser } from '../lib/supabase';
 
 let error: string | null = null;
@@ -16,12 +17,13 @@ if (session) return Astro.redirect('/dashboard');
 
 <Layout title="Login — Tabungan SDN Klagen 1">
   <section class="space-y-6 pt-6">
-    <header class="space-y-1 text-center">
-      <h1 class="text-2xl font-semibold">Masuk</h1>
+    <header class="flex flex-col items-center space-y-1 text-center">
+      <Piggy class="w-20 h-auto" />
+      <h1 class="text-2xl font-semibold">Masuk Guru</h1>
       <p class="text-sm text-ink/60">Khusus guru. Gunakan akun yang terdaftar.</p>
     </header>
 
-    <form method="POST" action="/api/auth/login" class="space-y-4 rounded-xl bg-brand-soft/60 p-6 shadow-sm">
+    <form method="POST" action="/api/auth/login" class="space-y-4 rounded-2xl card-soft p-6">
       <label class="block text-sm">
         <span class="mb-1 block font-medium">Email / Username</span>
         <input
@@ -29,7 +31,7 @@ if (session) return Astro.redirect('/dashboard');
           type="email"
           required
           autocomplete="username"
-          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+          class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
         />
       </label>
 
@@ -40,7 +42,7 @@ if (session) return Astro.redirect('/dashboard');
           type="password"
           required
           autocomplete="current-password"
-          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+          class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
         />
       </label>
 
@@ -53,7 +55,7 @@ if (session) return Astro.redirect('/dashboard');
       <button
         type="submit"
         disabled={loading}
-        class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90 disabled:opacity-60"
+        class="btn-candy-brand w-full rounded-full px-4 py-2.5 text-base disabled:opacity-60"
       >
         {loading ? 'Memproses...' : 'Masuk'}
       </button>

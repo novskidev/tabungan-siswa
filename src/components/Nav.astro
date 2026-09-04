@@ -7,55 +7,42 @@ interface Props {
 const { role, current } = Astro.props;
 
 const links = [
-  { key: 'dashboard', label: 'Dashboard', href: '/guru' },
-  { key: 'siswa', label: 'Siswa', href: '/guru/siswa' },
-  { key: 'transaksi', label: 'Transaksi', href: '/guru/transaksi' },
+  { key: 'dashboard', label: 'Dashboard', icon: '🏠', href: '/guru' },
+  { key: 'siswa', label: 'Siswa', icon: '🧒', href: '/guru/siswa' },
+  { key: 'transaksi', label: 'Transaksi', icon: '💰', href: '/guru/transaksi' },
 ];
 
 const masterLinks =
   role === 'master'
     ? [
-        { key: 'guru-admin', label: 'Guru', href: '/master' },
-        { key: 'profil', label: 'Profil', href: '/master/profil' },
+        { key: 'guru-admin', label: 'Guru', icon: '👩‍🏫', href: '/master' },
+        { key: 'profil', label: 'Profil', icon: '⚙️', href: '/master/profil' },
       ]
     : [];
 ---
 
-<nav class="mb-6 flex gap-1 rounded-lg bg-brand-soft/40 p-1 text-sm">
+<nav class="nav-pill mb-6 flex gap-1 p-1.5 text-sm">
   {
-    links.map((l) => (
+    [...links, ...masterLinks].map((l) => (
       <a
         href={l.href}
-        class={`flex-1 rounded-md px-3 py-2 text-center transition ${
-          current === l.key
-            ? 'bg-white text-ink shadow-sm'
-            : 'text-ink/60 hover:text-ink'
-        }`}
+        class:list={[
+          'flex-1 rounded-full px-2 py-2 text-center transition',
+          current === l.key ? 'active' : 'text-ink/55 hover:text-ink',
+        ]}
       >
-        {l.label}
-      </a>
-    ))
-  }
-  {
-    masterLinks.map((l) => (
-      <a
-        href={l.href}
-        class={`flex-1 rounded-md px-3 py-2 text-center transition ${
-          current === l.key
-            ? 'bg-white text-ink shadow-sm'
-            : 'text-ink/60 hover:text-ink'
-        }`}
-      >
-        {l.label}
+        <span aria-hidden="true">{l.icon}</span>{' '}
+        <span class="hidden sm:inline">{l.label}</span>
       </a>
     ))
   }
   <form method="POST" action="/api/auth/logout" class="flex-1">
     <button
       type="submit"
-      class="w-full rounded-md px-3 py-2 text-ink/60 hover:text-ink"
+      class="w-full rounded-full px-2 py-2 text-ink/55 transition hover:text-coral"
     >
-      Keluar
+      <span aria-hidden="true">🚪</span>{' '}
+      <span class="hidden sm:inline">Keluar</span>
     </button>
   </form>
 </nav>

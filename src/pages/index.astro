@@ -1,6 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import Piggy from '../components/Piggy.astro';
 import { getSupabase } from '../lib/supabase';
+import { avatarStyle, initials } from '../lib/avatar';
 import type { PublicStudent } from '../types/database';
 
 const { client } = getSupabase(Astro, { public: true });
@@ -24,49 +26,75 @@ const filtered = q
 ---
 
 <Layout title="Tabungan SDN Klagen 1">
-  <section class="space-y-5 pt-6">
-    <header class="space-y-1 text-center">
-      <h1 class="text-2xl font-semibold">Tabungan SDN Klagen 1</h1>
+  <section class="space-y-5 pt-4">
+    <header class="flex flex-col items-center space-y-1 text-center">
+      <Piggy class="w-28 h-auto" />
+      <h1 class="text-3xl font-semibold tracking-tight">Tabungan SDN Klagen 1</h1>
       <p class="text-sm text-ink/60">
         Pilih nama anak, masukkan PIN 4 digit untuk melihat saldo.
       </p>
     </header>
 
     <form method="GET" action="/" class="flex gap-2">
-      <input
-        name="q"
-        value={Astro.url.searchParams.get('q') ?? ''}
-        placeholder="Cari nama atau kelas"
-        autocomplete="off"
-        class="flex-1 rounded-md border border-ink/15 bg-white px-3 py-2.5 text-base outline-none focus:border-brand"
-      />
-      <button class="rounded-md bg-ink/5 px-4 py-2 text-sm font-medium hover:bg-ink/10">
+      <label
+        class="flex flex-1 items-center gap-2 rounded-full border-2 border-ink/10 bg-white px-4 shadow-[0_3px_0_rgba(59,54,83,0.07)] focus-within:border-brand"
+      >
+        <span aria-hidden="true">🔍</span>
+        <input
+          name="q"
+          value={Astro.url.searchParams.get('q') ?? ''}
+          placeholder="Cari nama atau kelas"
+          autocomplete="off"
+          class="w-full bg-transparent py-2.5 outline-none"
+        />
+      </label>
+      <button
+        class="btn-candy-ghost rounded-full px-5 text-sm font-medium"
+      >
         Cari
       </button>
     </form>
 
-    {filtered.length > 0 ? (
-      <ul class="space-y-2">
-        {filtered.map((s) => (
-          <li>
-            <a
-              href={`/siswa/${s.public_code}`}
-              class="block rounded-xl bg-white px-4 py-3 shadow-sm hover:bg-brand-soft/30"
-            >
-              <p class="font-medium">{s.full_name}</p>
-              <p class="text-xs text-ink/50">Kelas {s.class_name}</p>
-            </a>
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
-        {q ? 'Siswa tidak ditemukan.' : 'Belum ada data siswa.'}
-      </p>
-    )}
+    {
+      filtered.length > 0 ? (
+        <ul class="space-y-2">
+          {filtered.map((s) => (
+            <li>
+              <a
+                href={`/siswa/${s.public_code}`}
+                class="card-cute flex items-center gap-3 px-4 py-3 transition hover:-translate-y-0.5"
+              >
+                <span
+                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-semibold"
+                  style={avatarStyle(s.full_name)}
+                  aria-hidden="true"
+                >
+                  {initials(s.full_name)}
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate font-medium">{s.full_name}</span>
+                  <span class="mt-0.5 inline-block rounded-full bg-sun-soft px-2 py-0.5 text-xs font-medium">
+                    Kelas {s.class_name}
+                  </span>
+                </span>
+                <span class="text-ink/30" aria-hidden="true">›</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div class="card-cute flex flex-col items-center px-6 py-8 text-center">
+          <Piggy coin={false} class="w-20 h-auto" />
+          <p class="mt-2 text-sm text-ink/60">
+            {q ? `Tidak ada siswa yang cocok dengan "${q}".` : 'Belum ada data siswa.'}
+          </p>
+        </div>
+      )
+    }
 
-    <p class="text-center text-xs text-ink/50">
-      <a href="/login" class="underline hover:text-brand">Login Guru</a>
+    <p class="pb-2 text-center text-xs text-ink/50">
+      Guru?
+      <a href="/login" class="font-medium underline hover:text-brand">Masuk di sini</a>
     </p>
   </section>
 </Layout>

@@ -137,7 +137,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
     </p>
   )}
 
-  <form method="POST" class="mb-6 space-y-3 rounded-xl bg-brand-soft/40 p-5 shadow-sm">
+  <form method="POST" class="mb-6 space-y-3 rounded-2xl card-soft p-5">
     <input type="hidden" name="action" value="add" />
     <h2 class="text-sm font-medium">Tambah Guru</h2>
     <label class="block text-sm">
@@ -146,7 +146,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
         name="full_name"
         required
         placeholder="mis. Bu Guru Kelas 2"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
     <label class="block text-sm">
@@ -157,7 +157,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
         required
         autocomplete="off"
         placeholder="guru@sekolah.id"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
     <label class="block text-sm">
@@ -165,7 +165,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
       <select
         name="class_name"
         required
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       >
         <option value="" disabled selected>Pilih kelas</option>
         {['1', '2', '3', '4', '5', '6'].map((k) => <option value={k}>Kelas {k}</option>)}
@@ -179,12 +179,12 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
         required
         minlength="6"
         autocomplete="new-password"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
     <button
       type="submit"
-      class="w-full rounded-lg bg-brand px-4 py-2.5 text-base font-medium text-white transition hover:bg-brand/90"
+      class="w-full rounded-full btn-candy-brand px-4 py-2.5 text-base font-medium"
     >
       Tambah Guru
     </button>
@@ -193,7 +193,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
   <section>
     <h2 class="mb-2 text-sm font-medium text-ink/60">Daftar Guru ({teachers.length})</h2>
     {teachers.length > 0 ? (
-      <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+      <ul class="divide-y divide-ink/10 rounded-2xl card-cute">
         {teachers.map((t) => (
           <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <div class="min-w-0">
@@ -204,7 +204,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
                 <input type="hidden" name="teacher_id" value={t.id} />
                 <select
                   name="class_name"
-                  class="rounded-md border border-ink/15 bg-white px-1.5 py-1 text-xs"
+                  class="rounded-xl border-2 border-ink/10 bg-white px-1.5 py-1 text-xs"
                 >
                   {['1', '2', '3', '4', '5', '6'].map(
                     (k) => (
@@ -239,7 +239,7 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
         ))}
       </ul>
     ) : (
-      <p class="rounded-xl bg-white px-4 py-6 text-center text-sm text-ink/50 shadow-sm">
+      <p class="rounded-2xl card-cute px-4 py-6 text-center text-sm text-ink/50">
         Belum ada guru.
       </p>
     )}

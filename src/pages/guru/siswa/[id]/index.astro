@@ -128,17 +128,17 @@ const correctedSet = new Set(correctionIds);
     )}
 
     <div class="grid grid-cols-3 gap-2">
-      <div class="rounded-xl bg-brand-soft/60 p-4 shadow-sm">
+      <div class="rounded-2xl card-sun p-4">
         <p class="text-xs text-ink/60">Saldo</p>
         <p class="mt-1 text-lg font-semibold">{formatRupiah(balance.balance)}</p>
       </div>
-      <div class="rounded-xl bg-white p-4 shadow-sm">
+      <div class="rounded-2xl card-cute p-4">
         <p class="text-xs text-ink/60">Total Setoran</p>
         <p class="mt-1 text-lg font-semibold text-green-700">
           {formatRupiah(balance.totalDeposit)}
         </p>
       </div>
-      <div class="rounded-xl bg-white p-4 shadow-sm">
+      <div class="rounded-2xl card-cute p-4">
         <p class="text-xs text-ink/60">Total Penarikan</p>
         <p class="mt-1 text-lg font-semibold text-red-700">
           {formatRupiah(balance.totalWithdrawal)}
@@ -159,7 +159,7 @@ const correctedSet = new Set(correctionIds);
       <div class="mt-2 grid grid-cols-2 gap-2">
         <a
           href={`/guru?siswa=${student.id}&mode=deposit`}
-          class="rounded-lg bg-brand py-3 text-center text-sm font-medium text-white hover:bg-brand/90"
+          class="rounded-full btn-candy-brand py-3 text-center text-sm font-medium"
         >
           + Tambah Setoran
         </a>
@@ -172,7 +172,7 @@ const correctedSet = new Set(correctionIds);
       </div>
     )}
 
-    <dl class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+    <dl class="divide-y divide-ink/10 rounded-2xl card-cute">
       <div class="flex justify-between gap-3 px-4 py-3 text-sm">
         <dt class="text-ink/60">Halaman publik</dt>
         <dd class="font-medium">
@@ -216,7 +216,7 @@ const correctedSet = new Set(correctionIds);
     <section>
       <h2 class="mb-3 text-sm font-medium text-ink/60">Riwayat Transaksi</h2>
       {transactions.length > 0 ? (
-        <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+        <ul class="divide-y divide-ink/10 rounded-2xl card-cute">
           {transactions.map((t) => {
             const creator = asCreator(t.creator);
             const isCorrection = t.correction_of !== null;
@@ -260,7 +260,7 @@ const correctedSet = new Set(correctionIds);
           })}
         </ul>
       ) : (
-        <p class="rounded-xl bg-white px-4 py-8 text-center text-sm text-ink/50 shadow-sm">
+        <p class="rounded-2xl card-cute px-4 py-8 text-center text-sm text-ink/50">
           Belum ada transaksi.
         </p>
       )}

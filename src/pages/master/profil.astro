@@ -64,7 +64,7 @@ if (Astro.request.method === 'POST') {
     </p>
   )}
 
-  <form method="POST" class="mb-4 space-y-3 rounded-xl bg-white p-5 shadow-sm">
+  <form method="POST" class="mb-4 space-y-3 rounded-2xl card-cute p-5">
     <input type="hidden" name="action" value="rename" />
     <h2 class="text-sm font-medium">Nama tampilan</h2>
     <label class="block text-sm">
@@ -72,15 +72,15 @@ if (Astro.request.method === 'POST') {
         name="full_name"
         value={name}
         required
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
-    <button class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90">
+    <button class="w-full rounded-full btn-candy-brand px-4 py-2 text-sm">
       Simpan Nama
     </button>
   </form>
 
-  <form method="POST" class="space-y-3 rounded-xl bg-white p-5 shadow-sm">
+  <form method="POST" class="space-y-3 rounded-2xl card-cute p-5">
     <input type="hidden" name="action" value="password" />
     <h2 class="text-sm font-medium">Ganti password sendiri</h2>
     <label class="block text-sm">
@@ -91,7 +91,7 @@ if (Astro.request.method === 'POST') {
         required
         minlength="6"
         autocomplete="new-password"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
     <label class="block text-sm">
@@ -102,7 +102,7 @@ if (Astro.request.method === 'POST') {
         required
         minlength="6"
         autocomplete="new-password"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
       />
     </label>
     <button class="w-full rounded-lg bg-ink/80 px-4 py-2 text-sm font-medium text-white hover:bg-ink">

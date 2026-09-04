@@ -98,7 +98,7 @@ const correctedSet = new Set(
       <span class="mb-1 block text-xs text-ink/60">Tanggal</span>
       <select
         name="tanggal"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
       >
         <option value="" selected={dateFilter === ''}>Semua Tanggal</option>
         <option value="today" selected={dateFilter === 'today'}>Hari Ini</option>
@@ -109,7 +109,7 @@ const correctedSet = new Set(
       <span class="mb-1 block text-xs text-ink/60">Siswa</span>
       <select
         name="siswa"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
       >
         <option value="" selected={studentFilter === ''}>Semua Siswa</option>
         {students.map((s) => (
@@ -123,7 +123,7 @@ const correctedSet = new Set(
       <span class="mb-1 block text-xs text-ink/60">Jenis</span>
       <select
         name="jenis"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
       >
         <option value="" selected={typeFilter === ''}>Semua</option>
         <option value="deposit" selected={typeFilter === 'deposit'}>Setoran</option>
@@ -133,7 +133,7 @@ const correctedSet = new Set(
       </select>
     </label>
     <div class="sm:col-span-3 flex gap-2">
-      <button class="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90">
+      <button class="rounded-full btn-candy-brand px-4 py-2 text-sm">
         Terapkan
       </button>
       <a href="/guru/transaksi" class="rounded-md bg-ink/5 px-4 py-2 text-sm font-medium hover:bg-ink/10">
@@ -149,7 +149,7 @@ const correctedSet = new Set(
           <p class="mb-2 text-xs font-medium uppercase tracking-wide text-ink/50">
             {g.label}
           </p>
-          <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm">
+          <ul class="divide-y divide-ink/10 rounded-2xl card-cute">
             {g.items.map((t) => {
               const isCorrection = t.correction_of !== null;
               return (
@@ -200,7 +200,7 @@ const correctedSet = new Set(
       ))}
     </div>
   ) : (
-    <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+    <p class="rounded-2xl card-cute p-6 text-center text-sm text-ink/60 shadow-sm">
       Tidak ada transaksi yang cocok.
     </p>
   )}

@@ -47,7 +47,7 @@ const students = await Promise.all(
     <h1 class="text-xl font-semibold">Daftar Siswa</h1>
     <a
       href="/guru/siswa/new"
-      class="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90"
+      class="rounded-full btn-candy-brand px-3 py-1.5 text-sm font-medium"
     >
       + Tambah Siswa
     </a>
@@ -58,11 +58,11 @@ const students = await Promise.all(
       name="q"
       value={q}
       placeholder="Cari nama atau NIS"
-      class="flex-1 rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+      class="flex-1 rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
     />
     <select
       name="kelas"
-      class="rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+      class="rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
     >
       <option value="">Semua Kelas</option>
       {classes.map((c) => (
@@ -76,7 +76,7 @@ const students = await Promise.all(
 
   {students.length > 0 ? (
     <>
-      <ul class="divide-y divide-ink/10 rounded-xl bg-white shadow-sm sm:hidden">
+      <ul class="divide-y divide-ink/10 rounded-2xl card-cute sm:hidden">
         {students.map((s) => (
           <li>
             <a
@@ -95,7 +95,7 @@ const students = await Promise.all(
         ))}
       </ul>
 
-      <div class="hidden overflow-hidden rounded-xl bg-white shadow-sm sm:block">
+      <div class="hidden overflow-hidden rounded-2xl card-cute sm:block">
         <table class="w-full text-sm">
           <thead class="bg-brand-soft/40 text-left text-xs text-ink/60">
             <tr>
@@ -126,7 +126,7 @@ const students = await Promise.all(
       </div>
     </>
   ) : (
-    <p class="rounded-xl bg-white p-6 text-center text-sm text-ink/60 shadow-sm">
+    <p class="rounded-2xl card-cute p-6 text-center text-sm text-ink/60 shadow-sm">
       {q || kelas ? 'Siswa tidak ditemukan.' : 'Belum ada siswa.'}
     </p>
   )}
