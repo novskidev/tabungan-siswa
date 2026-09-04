@@ -6,6 +6,7 @@ declare namespace App {
       id: string;
       full_name: string;
       role: 'teacher' | 'master';
+      class_name: string | null;
       created_at: string;
     };
   }

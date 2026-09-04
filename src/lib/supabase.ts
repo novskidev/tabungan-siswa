@@ -7,6 +7,7 @@ export interface Profile {
   id: string;
   full_name: string;
   role: Role;
+  class_name: string | null;
   created_at: string;
 }
 
@@ -85,7 +86,7 @@ export async function getCurrentProfile(ctx: APIContext): Promise<Profile | null
   const { client } = getSupabase(ctx);
   const { data } = await client
     .from('profiles')
-    .select('id, full_name, role, created_at')
+    .select('id, full_name, role, class_name, created_at')
     .eq('id', user.id)
     .single();
   return data as Profile | null;

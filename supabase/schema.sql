@@ -2,7 +2,7 @@
 -- Source of truth for day-to-day work is supabase/migrations/*.sql.
 -- This file mirrors them so a fresh project can be replayed in file order,
 -- except the guarded backfill pieces that only make sense on live data.
--- Last synced: master migration 20250904000004_master_role.sql.
+-- Last synced: teacher class scope 20250904000005_teacher_class_scope.sql.
 
 create extension if not exists pgcrypto with schema extensions;
 
@@ -13,6 +13,15 @@ create table if not exists public.profiles (
   role text not null check (role in ('teacher', 'master')),
   created_at timestamptz not null default now()
 );
+
+-- One class per teacher ('1'-'6'); null until master assigns. Master sees all.
+alter table public.profiles
+  add column if not exists class_name text;
+alter table public.profiles
+  drop constraint if exists profiles_class_name_check;
+alter table public.profiles
+  add constraint profiles_class_name_check
+  check (class_name is null or class_name ~ '^[1-6]$');
 
 alter table public.profiles enable row level security;
 
@@ -58,11 +67,15 @@ create policy "students_teacher_all"
   to authenticated
   using (
     exists (select 1 from public.profiles p
-            where p.id = (select auth.uid()) and p.role in ('teacher', 'master'))
+            where p.id = (select auth.uid())
+              and (p.role = 'master'
+                   or (p.role = 'teacher' and p.class_name = students.class_name)))
   )
   with check (
     exists (select 1 from public.profiles p
-            where p.id = (select auth.uid()) and p.role in ('teacher', 'master'))
+            where p.id = (select auth.uid())
+              and (p.role = 'master'
+                   or (p.role = 'teacher' and p.class_name = students.class_name)))
   );
 
 revoke all on public.students from anon;
@@ -126,7 +139,8 @@ create policy "transactions_teacher_select"
   to authenticated
   using (
     exists (select 1 from public.profiles p
-            where p.id = (select auth.uid()) and p.role in ('teacher', 'master'))
+            where p.id = (select auth.uid()) and p.role = 'master')
+    or exists (select 1 from public.students s where s.id = student_id)
   );
 
 create policy "transactions_teacher_insert"
@@ -135,8 +149,7 @@ create policy "transactions_teacher_insert"
   to authenticated
   with check (
     created_by = (select auth.uid())
-    and exists (select 1 from public.profiles p
-                where p.id = (select auth.uid()) and p.role in ('teacher', 'master'))
+    and exists (select 1 from public.students s where s.id = student_id)
   );
 
 revoke all on public.transactions from anon;
@@ -156,7 +169,7 @@ grant execute on function public.correct_transaction(uuid, text)
   to authenticated;
 
 -- create_student(text, text, text): teacher-only, generates public_code +
--- bcrypt PIN. See 20250904000000_mvp_public_pin.sql.
+-- bcrypt PIN; teacher locked to own class. See 20250904000005.
 grant execute on function public.create_student(text, text, text)
   to authenticated;
 
@@ -176,18 +189,21 @@ revoke all on function public.reset_student_balance(uuid) from public;
 grant execute on function public.reset_student_balance(uuid) to authenticated;
 
 -- ---------- master RPCs ----------
--- list_teachers(): master-only teacher list (SECURITY DEFINER).
--- create_teacher_profile(uuid, text): master-only teacher profile insert.
+-- list_teachers(): master-only teacher list (SECURITY DEFINER, incl class).
+-- create_teacher_profile(uuid, text, text): master-only teacher insert.
+-- set_teacher_class(uuid, text): master-only class assignment.
 -- lookup_teacher_email(text): master-only teacher email check for reset gating.
 -- confirm_teacher_email(uuid): master-only auto-activate teacher account (no
 -- verification click needed).
 -- Full bodies in 20250904000004_master_role.sql.
 revoke all on function public.list_teachers() from public;
-revoke all on function public.create_teacher_profile(uuid, text) from public;
+revoke all on function public.create_teacher_profile(uuid, text, text) from public;
+revoke all on function public.set_teacher_class(uuid, text) from public;
 revoke all on function public.lookup_teacher_email(text) from public;
 revoke all on function public.confirm_teacher_email(uuid) from public;
 grant execute on function public.list_teachers() to authenticated;
-grant execute on function public.create_teacher_profile(uuid, text) to authenticated;
+grant execute on function public.create_teacher_profile(uuid, text, text) to authenticated;
+grant execute on function public.set_teacher_class(uuid, text) to authenticated;
 grant execute on function public.lookup_teacher_email(text) to authenticated;
 grant execute on function public.confirm_teacher_email(uuid) to authenticated;
 

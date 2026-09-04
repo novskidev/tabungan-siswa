@@ -10,13 +10,18 @@ const { client } = getSupabase(Astro);
 let error: string | null = null;
 let created: { full_name: string; class_name: string; public_code: string; default_pin: string } | null = null;
 let form = { full_name: '', nis: '', class_name: '' };
+// Guru terkunci ke kelasnya; master bebas memilih.
+const teacherClass = profile.role === 'teacher' ? profile.class_name : null;
+if (profile.role === 'teacher' && !teacherClass) {
+  error = 'Master belum menetapkan kelas Anda. Hubungi master sekolah.';
+}
 
 if (Astro.request.method === 'POST') {
   const data = await Astro.request.formData();
   form = {
     full_name: String(data.get('full_name') ?? '').trim(),
     nis: String(data.get('nis') ?? '').trim(),
-    class_name: String(data.get('class_name') ?? '').trim(),
+    class_name: teacherClass ?? String(data.get('class_name') ?? '').trim(),
   };
 
   if (!form.full_name) error = 'Nama wajib diisi.';
@@ -91,13 +96,25 @@ const previewPin = form.class_name ? defaultPinForClass(form.class_name) : '';
 
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Kelas</span>
-      <input
-        name="class_name"
-        value={form.class_name}
-        required
-        placeholder="mis. 1A"
-        class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      />
+      {teacherClass ? (
+        <>
+          <input type="hidden" name="class_name" value={teacherClass} />
+          <input
+            value={`Kelas ${teacherClass}`}
+            disabled
+            class="w-full rounded-md border border-ink/15 bg-ink/5 px-3 py-2 text-base"
+          />
+        </>
+      ) : (
+        <select
+          name="class_name"
+          required
+          class="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-base outline-none focus:border-brand"
+        >
+          <option value="" disabled selected>Pilih kelas</option>
+          {['1', '2', '3', '4', '5', '6'].map((k) => <option value={k}>Kelas {k}</option>)}
+        </select>
+      )}
       <span class="mt-1 block text-xs text-ink/50">
         PIN awal otomatis: {previewPin ? <span class="font-mono font-semibold">{previewPin}</span> : 'ikuti digit pertama kelas ×4'}.
       </span>
