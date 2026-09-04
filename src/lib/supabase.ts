@@ -28,9 +28,35 @@ function readConfig(): { url: string; anonKey: string } {
   return { url, anonKey };
 }
 
-function getAccessToken(ctx: APIContext): string | null {
-  const m = (ctx.request.headers.get('cookie') ?? '').match(/(?:^|; )sb-access-token=([^;]*)/);
+function getCookie(ctx: APIContext, name: string): string | null {
+  const m = (ctx.request.headers.get('cookie') ?? '').match(
+    new RegExp(`(?:^|; )${name}=([^;]*)`),
+  );
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+function getAccessToken(ctx: APIContext): string | null {
+  return getCookie(ctx, 'sb-access-token');
+}
+
+export function getAuthTokens(ctx: APIContext): {
+  access_token: string;
+  refresh_token: string;
+} | null {
+  const access_token = getCookie(ctx, 'sb-access-token');
+  const refresh_token = getCookie(ctx, 'sb-refresh-token');
+  if (!access_token || !refresh_token) return null;
+  return { access_token, refresh_token };
+}
+
+export async function setAuthSession(
+  ctx: APIContext,
+  client: SupabaseClient,
+): Promise<boolean> {
+  const tokens = getAuthTokens(ctx);
+  if (!tokens) return false;
+  const { error } = await client.auth.setSession(tokens);
+  return !error;
 }
 
 export function getSupabase(ctx: APIContext): AppSupabase {
