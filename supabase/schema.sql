@@ -192,6 +192,7 @@ grant execute on function public.reset_student_balance(uuid) to authenticated;
 -- list_teachers(): master-only teacher list (SECURITY DEFINER, incl class).
 -- create_teacher_profile(uuid, text, text): master-only teacher insert.
 -- set_teacher_class(uuid, text): master-only class assignment.
+-- delete_teacher(uuid): master-only profile removal (FK keeps transactions).
 -- lookup_teacher_email(text): master-only teacher email check for reset gating.
 -- confirm_teacher_email(uuid): master-only auto-activate teacher account (no
 -- verification click needed).
@@ -199,11 +200,13 @@ grant execute on function public.reset_student_balance(uuid) to authenticated;
 revoke all on function public.list_teachers() from public;
 revoke all on function public.create_teacher_profile(uuid, text, text) from public;
 revoke all on function public.set_teacher_class(uuid, text) from public;
+revoke all on function public.delete_teacher(uuid) from public;
 revoke all on function public.lookup_teacher_email(text) from public;
 revoke all on function public.confirm_teacher_email(uuid) from public;
 grant execute on function public.list_teachers() to authenticated;
 grant execute on function public.create_teacher_profile(uuid, text, text) to authenticated;
 grant execute on function public.set_teacher_class(uuid, text) to authenticated;
+grant execute on function public.delete_teacher(uuid) to authenticated;
 grant execute on function public.lookup_teacher_email(text) to authenticated;
 grant execute on function public.confirm_teacher_email(uuid) to authenticated;
 

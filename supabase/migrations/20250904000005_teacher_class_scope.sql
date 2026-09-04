@@ -291,3 +291,31 @@ end;
 $$;
 revoke all on function public.list_teachers() from public;
 grant execute on function public.list_teachers() to authenticated;
+
+-- 6. Master-only teacher removal. Profile row only: transactions.created_by
+-- FK (RESTRICT) keeps money history — a teacher with transactions cannot be
+-- deleted until handled explicitly.
+create or replace function public.delete_teacher(p_teacher_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+begin
+  if v_uid is null then
+    raise exception 'unauthenticated' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.profiles p
+                 where p.id = v_uid and p.role = 'master') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  delete from public.profiles where id = p_teacher_id and role = 'teacher';
+  if not found then
+    raise exception 'guru tidak ditemukan' using errcode = 'P0002';
+  end if;
+end;
+$$;
+revoke all on function public.delete_teacher(uuid) from public;
+grant execute on function public.delete_teacher(uuid) to authenticated;

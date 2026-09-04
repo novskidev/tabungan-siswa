@@ -38,6 +38,18 @@ if (Astro.request.method === 'POST') {
         else notice = `Link reset password dikirim ke ${email}.`;
       }
     }
+  } else if (action === 'delete') {
+    const teacherId = String(form.get('teacher_id') ?? '');
+    const { error: rpcError } = await client.rpc('delete_teacher', {
+      p_teacher_id: teacherId,
+    });
+    if (rpcError) {
+      error = rpcError.code === '23503'
+        ? 'Guru masih punya riwayat transaksi. Data uang tidak ikut dihapus.'
+        : `Gagal menghapus guru: ${rpcError.message}`;
+    } else {
+      notice = 'Guru dihapus.';
+    }
   } else if (action === 'set_class') {
     const teacherId = String(form.get('teacher_id') ?? '');
     const className = String(form.get('class_name') ?? '').trim();
@@ -207,13 +219,22 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
                 </button>
               </form>
             </div>
-            <form method="POST" class="reset-form shrink-0">
-              <input type="hidden" name="action" value="reset" />
-              <input type="hidden" name="email" value={t.email} />
-              <button class="rounded-md bg-ink/5 px-3 py-1.5 text-xs hover:bg-ink/10">
-                Kirim link reset password
-              </button>
-            </form>
+            <div class="flex shrink-0 gap-1.5">
+              <form method="POST" class="reset-form">
+                <input type="hidden" name="action" value="reset" />
+                <input type="hidden" name="email" value={t.email} />
+                <button class="rounded-md bg-ink/5 px-3 py-1.5 text-xs hover:bg-ink/10">
+                  Kirim link reset password
+                </button>
+              </form>
+              <form method="POST" class="delete-form">
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="teacher_id" value={t.id} />
+                <button class="rounded-md bg-red-100 px-3 py-1.5 text-xs text-red-700 hover:bg-red-200">
+                  Hapus
+                </button>
+              </form>
+            </div>
           </li>
         ))}
       </ul>
@@ -230,6 +251,11 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
     document.querySelectorAll('.reset-form').forEach(function (f) {
       f.addEventListener('submit', function (e) {
         if (!window.confirm('Kirim link reset password ke guru ini?')) e.preventDefault();
+      });
+    });
+    document.querySelectorAll('.delete-form').forEach(function (f) {
+      f.addEventListener('submit', function (e) {
+        if (!window.confirm('Hapus guru ini dari daftar? Riwayat transaksinya tetap tersimpan.')) e.preventDefault();
       });
     });
   })();
