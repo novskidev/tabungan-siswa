@@ -1,0 +1,14 @@
+{
+  "name": "Tabungan SDN Klagen 1",
+  "short_name": "Tabungan",
+  "lang": "id",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#FFF9EE",
+  "theme_color": "#38B6FF",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
