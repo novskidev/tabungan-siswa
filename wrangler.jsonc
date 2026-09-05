@@ -1,6 +1,7 @@
-// ponytail: tanpa pages_build_output_dir → Pages mengabaikan file ini (adapter
-// @astrojs/cloudflare v14 menulis config Workers di dist/server/wrangler.json
-// yang tidak valid untuk mode Pages). Aktifkan kembali saat migrasi ke Workers.
+// ponytail: root config hanya metadata — main/assets digenerate adapter ke
+// dist/server/wrangler.json saat build (main di root memicu error vite-plugin).
+// Deploy: `wrangler deploy -c dist/server/wrangler.json` (Pages 404 karena
+// @astrojs/cloudflare v14 tidak lagi membuat _worker.js untuk Pages).
 {
   "name": "tabungan-siswa",
   "compatibility_date": "2024-09-23",

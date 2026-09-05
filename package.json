@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "postbuild": "esbuild dist/server/entry.mjs --bundle --format=esm --platform=neutral --external:cloudflare:workers --external:node:* --outfile=dist/client/_worker.js",
     "preview": "astro preview",
     "astro": "astro",
     "typecheck": "astro check"
@@ -26,7 +27,9 @@
     "@astrojs/check": "^0.9.10",
     "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.3.3",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6"
+    "typescript": "^6",
+    "wrangler": "^4.129.0"
   }
 }
