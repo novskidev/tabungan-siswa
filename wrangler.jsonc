@@ -1,6 +1,8 @@
+// ponytail: tanpa pages_build_output_dir → Pages mengabaikan file ini (adapter
+// @astrojs/cloudflare v14 menulis config Workers di dist/server/wrangler.json
+// yang tidak valid untuk mode Pages). Aktifkan kembali saat migrasi ke Workers.
 {
   "name": "tabungan-siswa",
   "compatibility_date": "2024-09-23",
-  "compatibility_flags": ["nodejs_compat"],
-  "pages_build_output_dir": "dist"
+  "compatibility_flags": ["nodejs_compat"]
 }
