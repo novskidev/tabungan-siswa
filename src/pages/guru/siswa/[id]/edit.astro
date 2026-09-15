@@ -25,15 +25,16 @@ let form = {
   nis: (student.nis as string | null) ?? '',
   class_name: student.class_name as string,
 };
-// Guru terkunci ke kelasnya sendiri; master bebas memindah kelas.
-const teacherClass = profile.role === 'teacher' ? profile.class_name : null;
+// Guru terkunci ke kelas-kelasnya sendiri; master bebas memindah kelas.
+const teacherClasses = profile.role === 'teacher' ? (profile.class_names ?? []) : [];
+const classOptions = profile.role === 'teacher' ? teacherClasses : ['1', '2', '3', '4', '5', '6'];
 
 if (Astro.request.method === 'POST') {
   const data = await Astro.request.formData();
   form = {
     full_name: String(data.get('full_name') ?? '').trim(),
     nis: String(data.get('nis') ?? '').trim(),
-    class_name: teacherClass ?? String(data.get('class_name') ?? '').trim(),
+    class_name: teacherClasses.length === 1 ? teacherClasses[0] : String(data.get('class_name') ?? '').trim(),
   };
 
   if (!form.full_name) error = 'Nama wajib diisi.';
@@ -99,11 +100,11 @@ if (Astro.request.method === 'POST') {
 
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Kelas</span>
-      {teacherClass ? (
+      {teacherClasses.length === 1 ? (
         <>
-          <input type="hidden" name="class_name" value={teacherClass} />
+          <input type="hidden" name="class_name" value={teacherClasses[0]} />
           <input
-            value={`Kelas ${teacherClass}`}
+            value={`Kelas ${teacherClasses[0]}`}
             disabled
             class="w-full rounded-xl border-2 border-ink/10 bg-ink/5 px-3 py-2 text-base"
           />
@@ -114,7 +115,7 @@ if (Astro.request.method === 'POST') {
           required
           class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
         >
-          {['1', '2', '3', '4', '5', '6'].map(
+          {classOptions.map(
             (k) => (
               <option value={k} selected={form.class_name === k}>
                 Kelas {k}

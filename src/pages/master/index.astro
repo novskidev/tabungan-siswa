@@ -50,17 +50,31 @@ if (Astro.request.method === 'POST') {
     } else {
       notice = 'Guru dihapus.';
     }
-  } else if (action === 'set_class') {
+  } else if (action === 'add_class') {
     const teacherId = String(form.get('teacher_id') ?? '');
     const className = String(form.get('class_name') ?? '').trim();
     if (!teacherId || !/^[1-6]$/.test(className)) {
       error = 'Kelas harus 1 sampai 6.';
     } else {
-      const { error: rpcError } = await client.rpc('set_teacher_class', {
+      const { error: rpcError } = await client.rpc('add_teacher_class', {
         p_teacher_id: teacherId,
         p_class_name: className,
       });
-      if (rpcError) error = `Gagal mengubah kelas: ${rpcError.message}`;
+      if (rpcError) error = `Gagal menambah kelas: ${rpcError.message}`;
+      else notice = `Kelas ${className} ditambahkan.`;
+    }
+  } else if (action === 'remove_class') {
+    const teacherId = String(form.get('teacher_id') ?? '');
+    const className = String(form.get('class_name') ?? '').trim();
+    if (!teacherId || !/^[1-6]$/.test(className)) {
+      error = 'Kelas harus 1 sampai 6.';
+    } else {
+      const { error: rpcError } = await client.rpc('remove_teacher_class', {
+        p_teacher_id: teacherId,
+        p_class_name: className,
+      });
+      if (rpcError) error = `Gagal menghapus kelas: ${rpcError.message}`;
+      else notice = `Kelas ${className} dihapus.`;
     }
   } else {
     const email = String(form.get('email') ?? '').trim().toLowerCase();
@@ -71,6 +85,11 @@ if (Astro.request.method === 'POST') {
     } else if (password.length < 6) {
       error = 'Password minimal 6 karakter.';
     } else {
+      const picked = form
+        .getAll('class_names')
+        .map((v) => String(v).trim())
+        .filter((v) => /^[1-6]$/.test(v));
+      const classNames = [...new Set(picked)];
       const { data: signData, error: signError } = await anon.auth.signUp({
         email,
         password,
@@ -98,7 +117,7 @@ if (Astro.request.method === 'POST') {
           const { error: rpcError } = await client.rpc('create_teacher_profile', {
             p_user_id: signData.user.id,
             p_full_name: fullName,
-            p_class_name: String(form.get('class_name') ?? '').trim(),
+            p_class_names: classNames,
           });
           if (rpcError) {
             error = rpcError.message.includes('sudah ada')
@@ -115,7 +134,7 @@ if (Astro.request.method === 'POST') {
 
 const { data: teacherRows, error: listError } = await client.rpc('list_teachers');
 if (listError && !error) error = `Gagal memuat daftar guru: ${listError.message}`;
-const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email: string; class_name: string | null; created_at: string }[]);
+const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email: string; class_names: string[]; created_at: string }[]);
 ---
 
 <Layout title="Kelola Guru — Tabungan SDN Klagen 1" wide>
@@ -161,16 +180,16 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
       />
     </label>
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">Kelas yang diampu</span>
-      <select
-        name="class_name"
-        required
-        class="w-full rounded-xl border-2 border-ink/10 bg-white px-3 py-2 text-base outline-none focus:border-brand"
-      >
-        <option value="" disabled selected>Pilih kelas</option>
-        {['1', '2', '3', '4', '5', '6'].map((k) => <option value={k}>Kelas {k}</option>)}
-      </select>
-    </label>
+      <span class="mb-1 block font-medium">Kelas yang diampu <span class="text-xs text-ink/50">(boleh lebih dari satu)</span></span>
+      <div class="flex flex-wrap gap-2">
+        {['1', '2', '3', '4', '5', '6'].map((k) => (
+          <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-ink/10 bg-white px-3 py-1 text-sm has-checked:border-brand has-checked:bg-brand-soft">
+            <input type="checkbox" name="class_names" value={k} class="accent-brand" />
+            Kelas {k}
+          </label>
+        ))}
+      </div>
+    </label>>
     <label class="block text-sm">
       <span class="mb-1 block font-medium">Password awal</span>
       <input
@@ -199,25 +218,44 @@ const teachers = ((teacherRows ?? []) as { id: string; full_name: string; email:
             <div class="min-w-0">
               <p class="truncate font-medium">{t.full_name}</p>
               <p class="truncate text-xs text-ink/50">{t.email}</p>
-              <form method="POST" class="mt-1.5 flex items-center gap-1.5">
-                <input type="hidden" name="action" value="set_class" />
-                <input type="hidden" name="teacher_id" value={t.id} />
-                <select
-                  name="class_name"
-                  class="rounded-xl border-2 border-ink/10 bg-white px-1.5 py-1 text-xs"
-                >
-                  {['1', '2', '3', '4', '5', '6'].map(
-                    (k) => (
-                      <option value={k} selected={t.class_name === k}>
-                        Kelas {k}
-                      </option>
-                    ),
-                  )}
-                </select>
-                <button class="rounded-md bg-ink/5 px-2 py-1 text-xs hover:bg-ink/10">
-                  Ubah kelas
-                </button>
-              </form>
+              <div class="mt-1.5 flex flex-wrap items-center gap-1">
+                {((t.class_names ?? []) as string[]).map((k) => (
+                  <form
+                    method="POST"
+                    class="inline-flex items-center gap-1 rounded-full bg-sun-soft px-2 py-0.5 text-xs font-medium"
+                  >
+                    <span>Kelas {k}</span>
+                    <input type="hidden" name="action" value="remove_class" />
+                    <input type="hidden" name="teacher_id" value={t.id} />
+                    <input type="hidden" name="class_name" value={k} />
+                    <button title={`Hapus kelas ${k}`} class="text-ink/40 hover:text-coral">
+                      ✕
+                    </button>
+                  </form>
+                ))}
+                {(t.class_names ?? []).length === 0 && (
+                  <span class="text-xs text-ink/50">Belum ada kelas</span>
+                )}
+              </div>
+              {['1', '2', '3', '4', '5', '6'].filter((k) => !(t.class_names ?? []).includes(k)).length > 0 && (
+                <form method="POST" class="mt-1.5 flex items-center gap-1.5">
+                  <input type="hidden" name="action" value="add_class" />
+                  <input type="hidden" name="teacher_id" value={t.id} />
+                  <select
+                    name="class_name"
+                    class="rounded-xl border-2 border-ink/10 bg-white px-1.5 py-1 text-xs"
+                  >
+                    {['1', '2', '3', '4', '5', '6']
+                      .filter((k) => !(t.class_names ?? []).includes(k))
+                      .map((k) => (
+                        <option value={k}>Kelas {k}</option>
+                      ))}
+                  </select>
+                  <button class="rounded-md bg-ink/5 px-2 py-1 text-xs hover:bg-ink/10">
+                    + Tambah
+                  </button>
+                </form>
+              )}
             </div>
             <div class="flex shrink-0 gap-1.5">
               <form method="POST" class="reset-form">
