@@ -1,0 +1,355 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Nav from '../../../components/Nav.astro';
+import { getSupabase, requireRole } from '../../../lib/supabase';
+import {
+  formatKamisLabel,
+  getThursdayOfWeek,
+  getAdjacentThursday,
+  getEkskulStatusBadge,
+} from '../../../lib/ekskul';
+import { formatRupiah } from '../../../lib/transactions';
+import type { EkskulPaymentRow, EkskulStatus } from '../../../types/database';
+
+const profile = await requireRole(Astro, 'teacher');
+if (profile.role !== 'master' && !profile.is_ekskul_teacher) {
+  return Astro.redirect('/guru');
+}
+
+const { client } = getSupabase(Astro);
+
+let error: string | null = null;
+let notice: string | null = (Astro.url.searchParams.get('notice') ?? '').trim() || null;
+
+// Date resolution
+let rawDate = (Astro.url.searchParams.get('date') ?? '').trim();
+if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+  rawDate = getThursdayOfWeek(new Date());
+}
+const selectedDate = rawDate;
+const prevDate = getAdjacentThursday(selectedDate, -1);
+const nextDate = getAdjacentThursday(selectedDate, 1);
+const kamisLabel = formatKamisLabel(selectedDate);
+
+// Class filter
+const kelas = (Astro.url.searchParams.get('kelas') ?? '').trim();
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'save_status') {
+    const studentId = String(form.get('student_id') ?? '');
+    const paymentDate = String(form.get('payment_date') ?? selectedDate);
+    const status = String(form.get('status') ?? '') as EkskulStatus;
+    const note = String(form.get('note') ?? '').trim();
+
+    if (!studentId || !['paid', 'unpaid', 'absent'].includes(status)) {
+      error = 'Data pembayaran tidak valid.';
+    } else {
+      const { error: rpcError } = await client.rpc('save_ekskul_payment', {
+        p_student_id: studentId,
+        p_payment_date: paymentDate,
+        p_status: status,
+        p_note: note || null,
+      });
+      if (rpcError) {
+        error = `Gagal menyimpan: ${rpcError.message}`;
+      } else {
+        return Astro.redirect(`/guru/ekskul?date=${paymentDate}${kelas ? `&kelas=${kelas}` : ''}`);
+      }
+    }
+  } else if (action === 'bulk_paid') {
+    const studentIds = form.getAll('student_ids').map(String);
+    const paymentDate = String(form.get('payment_date') ?? selectedDate);
+
+    if (studentIds.length === 0) {
+      error = 'Tidak ada siswa yang dipilih.';
+    } else {
+      const { error: rpcError } = await client.rpc('bulk_save_ekskul_payments', {
+        p_student_ids: studentIds,
+        p_payment_date: paymentDate,
+        p_status: 'paid',
+      });
+      if (rpcError) {
+        error = `Gagal menyimpan massal: ${rpcError.message}`;
+      } else {
+        return Astro.redirect(`/guru/ekskul?date=${paymentDate}${kelas ? `&kelas=${kelas}` : ''}&notice=${encodeURIComponent('Semua siswa berhasil ditandai Lunas.')}`);
+      }
+    }
+  }
+}
+
+// Fetch active students
+let studentQuery = client
+  .from('students')
+  .select('id, nis, full_name, class_name')
+  .eq('is_active', true)
+  .order('class_name')
+  .order('full_name');
+
+if (kelas) {
+  studentQuery = studentQuery.eq('class_name', kelas);
+}
+const { data: studentRows, error: studentError } = await studentQuery;
+if (studentError && !error) error = `Gagal memuat siswa: ${studentError.message}`;
+
+const students = (studentRows ?? []) as {
+  id: string;
+  nis: string | null;
+  full_name: string;
+  class_name: string;
+}[];
+
+// Fetch payments for selected Thursday
+const { data: paymentRows, error: paymentError } = await client
+  .from('ekskul_payments')
+  .select('id, student_id, payment_date, status, amount, note, recorded_by, created_at, updated_at')
+  .eq('payment_date', selectedDate);
+
+if (paymentError && !error) error = `Gagal memuat catatan iuran: ${paymentError.message}`;
+
+const paymentMap = new Map<string, EkskulPaymentRow>();
+for (const row of (paymentRows ?? []) as EkskulPaymentRow[]) {
+  paymentMap.set(row.student_id, row);
+}
+
+// Summary stats for current view
+let countPaid = 0;
+let countUnpaid = 0;
+let countAbsent = 0;
+for (const s of students) {
+  const p = paymentMap.get(s.id);
+  if (!p) continue;
+  if (p.status === 'paid') countPaid++;
+  else if (p.status === 'unpaid') countUnpaid++;
+  else if (p.status === 'absent') countAbsent++;
+}
+const countUnrecorded = students.length - (countPaid + countUnpaid + countAbsent);
+const totalCollected = countPaid * 3000;
+---
+
+<Layout title="Iuran Ekskul — Tabungan SDN Klagen 1" wide>
+  <Nav role={profile.role} current="ekskul" isEkskulTeacher={profile.is_ekskul_teacher} />
+
+  <header class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h1 class="text-xl font-semibold">Pencatatan Iuran Ekstrakurikuler</h1>
+      <p class="text-sm text-ink/60">Iuran mingguan Rp3.000 / siswa setiap hari Kamis (Tunai langsung).</p>
+    </div>
+  </header>
+
+  {error && (
+    <p role="alert" class="mb-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-800">
+      {error}
+    </p>
+  )}
+  {notice && (
+    <p role="status" class="mb-4 rounded-md bg-green-100 px-3 py-2 text-sm text-green-800">
+      {notice}
+    </p>
+  )}
+
+  <!-- Date Navigation Bar -->
+  <section class="mb-5 rounded-2xl card-soft p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <a
+          href={`/guru/ekskul?date=${prevDate}${kelas ? `&kelas=${kelas}` : ''}`}
+          class="rounded-xl border border-ink/10 bg-white px-3 py-1.5 text-xs font-medium text-ink hover:bg-ink/5"
+          title="Kamis sebelumnya"
+        >
+          ← Kamis Lalu
+        </a>
+        <a
+          href={`/guru/ekskul?date=${getThursdayOfWeek(new Date())}${kelas ? `&kelas=${kelas}` : ''}`}
+          class="rounded-xl border border-ink/10 bg-white px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-ink/5"
+          title="Ke Kamis minggu ini"
+        >
+          Kamis Ini
+        </a>
+        <a
+          href={`/guru/ekskul?date=${nextDate}${kelas ? `&kelas=${kelas}` : ''}`}
+          class="rounded-xl border border-ink/10 bg-white px-3 py-1.5 text-xs font-medium text-ink hover:bg-ink/5"
+          title="Kamis berikutnya"
+        >
+          Kamis Depan →
+        </a>
+      </div>
+      <div class="text-right">
+        <span class="block text-xs font-medium uppercase tracking-wider text-ink/50">Pertemuan</span>
+        <span class="text-base font-semibold text-brand">{kamisLabel}</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Summary Statistics -->
+  <section class="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+    <div class="rounded-2xl card-cute p-3.5 text-center">
+      <span class="text-xs text-ink/60">Terkumpul</span>
+      <p class="mt-1 text-lg font-bold text-emerald-700">{formatRupiah(totalCollected)}</p>
+      <span class="text-[11px] text-ink/50">{countPaid} siswa lunas</span>
+    </div>
+    <div class="rounded-2xl card-cute p-3.5 text-center">
+      <span class="text-xs text-ink/60">Tunggakan</span>
+      <p class="mt-1 text-lg font-bold text-amber-700">{countUnpaid} siswa</p>
+      <span class="text-[11px] text-ink/50">{formatRupiah(countUnpaid * 3000)}</span>
+    </div>
+    <div class="rounded-2xl card-cute p-3.5 text-center">
+      <span class="text-xs text-ink/60">Tidak Masuk</span>
+      <p class="mt-1 text-lg font-bold text-ink/70">{countAbsent} siswa</p>
+      <span class="text-[11px] text-ink/50">Bebas iuran</span>
+    </div>
+    <div class="rounded-2xl card-cute p-3.5 text-center">
+      <span class="text-xs text-ink/60">Belum Dicatat</span>
+      <p class="mt-1 text-lg font-bold text-blue-700">{countUnrecorded} siswa</p>
+      <span class="text-[11px] text-ink/50">dari {students.length} siswa</span>
+    </div>
+  </section>
+
+  <!-- Filter & Bulk Actions -->
+  <section class="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-medium text-ink/60">Filter:</span>
+      <div class="flex flex-wrap gap-1">
+        <a
+          href={`/guru/ekskul?date=${selectedDate}`}
+          class:list={[
+            'rounded-full px-2.5 py-1 text-xs font-medium transition',
+            !kelas ? 'bg-brand text-white' : 'bg-white border border-ink/10 text-ink/70 hover:bg-ink/5',
+          ]}
+        >
+          Semua
+        </a>
+        {['1', '2', '3', '4', '5', '6'].map((k) => (
+          <a
+            href={`/guru/ekskul?date=${selectedDate}&kelas=${k}`}
+            class:list={[
+              'rounded-full px-2.5 py-1 text-xs font-medium transition',
+              kelas === k ? 'bg-brand text-white' : 'bg-white border border-ink/10 text-ink/70 hover:bg-ink/5',
+            ]}
+          >
+            Kelas {k}
+          </a>
+        ))}
+      </div>
+    </div>
+
+    {students.length > 0 && (
+      <form method="POST">
+        <input type="hidden" name="action" value="bulk_paid" />
+        <input type="hidden" name="payment_date" value={selectedDate} />
+        {students.map((s) => (
+          <input type="hidden" name="student_ids" value={s.id} />
+        ))}
+        <button
+          type="submit"
+          onclick="return confirm('Tandai semua siswa yang tampil sebagai Masuk & Lunas?')"
+          class="rounded-full bg-emerald-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-xs transition hover:bg-emerald-700 cursor-pointer"
+        >
+          ✓ Tandai Semua Masuk & Lunas
+        </button>
+      </form>
+    )}
+  </section>
+
+  <!-- Student Checklist -->
+  <section>
+    {students.length === 0 ? (
+      <div class="rounded-2xl card-soft p-8 text-center text-ink/60">
+        Tidak ada data siswa aktif{kelas ? ` di Kelas ${kelas}` : ''}.
+      </div>
+    ) : (
+      <ul class="divide-y divide-ink/10 rounded-2xl card-cute">
+        {students.map((s, idx) => {
+          const payment = paymentMap.get(s.id);
+          const currentStatus = payment?.status ?? null;
+          const badge = getEkskulStatusBadge(currentStatus);
+
+          return (
+            <li class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono text-ink/40">{idx + 1}.</span>
+                  <span class="font-medium text-ink">{s.full_name}</span>
+                  <span class="rounded-full bg-sun-soft px-2 py-0.5 text-xs font-medium text-ink/70">
+                    Kelas {s.class_name}
+                  </span>
+                  {s.nis && <span class="text-xs text-ink/40">NIS {s.nis}</span>}
+                </div>
+                <div class="mt-1 flex items-center gap-2">
+                  <span class={`inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold border ${badge.class}`}>
+                    {badge.label}
+                  </span>
+                  {payment?.note && (
+                    <span class="text-xs text-ink/50 italic">"{payment.note}"</span>
+                  )}
+                </div>
+              </div>
+
+              <!-- Quick Status Buttons -->
+              <div class="flex shrink-0 items-center gap-1.5">
+                <form method="POST" class="inline">
+                  <input type="hidden" name="action" value="save_status" />
+                  <input type="hidden" name="student_id" value={s.id} />
+                  <input type="hidden" name="payment_date" value={selectedDate} />
+                  <input type="hidden" name="status" value="paid" />
+                  <button
+                    type="submit"
+                    title="Tandai Lunas Rp3.000"
+                    class:list={[
+                      'rounded-xl px-2.5 py-1.5 text-xs font-medium transition cursor-pointer border',
+                      currentStatus === 'paid'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50',
+                    ]}
+                  >
+                    ✓ Lunas
+                  </button>
+                </form>
+
+                <form method="POST" class="inline">
+                  <input type="hidden" name="action" value="save_status" />
+                  <input type="hidden" name="student_id" value={s.id} />
+                  <input type="hidden" name="payment_date" value={selectedDate} />
+                  <input type="hidden" name="status" value="unpaid" />
+                  <button
+                    type="submit"
+                    title="Tandai Masuk tapi belum bayar (Tunggakan)"
+                    class:list={[
+                      'rounded-xl px-2.5 py-1.5 text-xs font-medium transition cursor-pointer border',
+                      currentStatus === 'unpaid'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50',
+                    ]}
+                  >
+                    ⚠ Tunggakan
+                  </button>
+                </form>
+
+                <form method="POST" class="inline">
+                  <input type="hidden" name="action" value="save_status" />
+                  <input type="hidden" name="student_id" value={s.id} />
+                  <input type="hidden" name="payment_date" value={selectedDate} />
+                  <input type="hidden" name="status" value="absent" />
+                  <button
+                    type="submit"
+                    title="Tandai Tidak Masuk (Bebas Iuran)"
+                    class:list={[
+                      'rounded-xl px-2.5 py-1.5 text-xs font-medium transition cursor-pointer border',
+                      currentStatus === 'absent'
+                        ? 'bg-gray-700 text-white border-gray-700 shadow-xs'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100',
+                    ]}
+                  >
+                    ✕ Izin / Sakit
+                  </button>
+                </form>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </section>
+</Layout>
