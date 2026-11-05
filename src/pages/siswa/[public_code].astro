@@ -6,7 +6,12 @@ import {
   formatTimeShort,
   groupByDay,
 } from '../../lib/transactions';
-import type { VerifiedSavings, PublicHistoryItem } from '../../types/database';
+import {
+  getThursdayOfWeek,
+  formatKamisLabel,
+  getEkskulStatusBadge,
+} from '../../lib/ekskul';
+import type { VerifiedSavings, PublicHistoryItem, StudentEkskulHistoryItem } from '../../types/database';
 
 const { public_code } = Astro.params;
 if (!public_code) return Astro.redirect('/');
@@ -16,9 +21,9 @@ const { client } = getSupabase(Astro, { public: true });
 let pinError: string | null = null;
 let savings: VerifiedSavings | null = null;
 let groups: { key: string; label: string; items: PublicHistoryItem[] }[] = [];
-let authedPin: string | null = null;
 let pinChangeOk: string | null = null;
 let pinChangeError: string | null = null;
+let ekskulHistory: StudentEkskulHistoryItem[] = [];
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -44,7 +49,6 @@ if (Astro.request.method === 'POST') {
           ? 'PIN lama salah. Silakan coba lagi.'
           : 'Gagal mengganti PIN. Silakan coba lagi.';
       } else {
-        authedPin = newPin;
         pinChangeOk = 'PIN berhasil diganti.';
         const { data } = await client.rpc('verify_student_pin', {
           p_code: public_code,
@@ -56,32 +60,48 @@ if (Astro.request.method === 'POST') {
           p_pin: newPin,
         });
         groups = groupByDay((hist ?? []) as PublicHistoryItem[]);
+        const { data: ekskulData } = await client.rpc('get_student_ekskul_history', {
+          p_code: public_code,
+          p_pin: newPin,
+        });
+        ekskulHistory = (ekskulData ?? []) as StudentEkskulHistoryItem[];
       }
     }
   } else {
-  const pin = String(form.get('pin') ?? '').trim();
-  if (!/^\d{4}$/.test(pin)) {
-    pinError = 'PIN harus 4 digit angka.';
-  } else {
-    const { data } = await client.rpc('verify_student_pin', {
-      p_code: public_code,
-      p_pin: pin,
-    });
-    const row = (data as VerifiedSavings[] | null)?.[0] ?? null;
-    if (!row) {
-      pinError = 'PIN salah. Silakan coba lagi.';
+    const pin = String(form.get('pin') ?? '').trim();
+    if (!/^\d{4}$/.test(pin)) {
+      pinError = 'PIN harus 4 digit angka.';
     } else {
-      savings = row;
-      authedPin = pin;
-      const { data: hist } = await client.rpc('get_student_history', {
+      const { data } = await client.rpc('verify_student_pin', {
         p_code: public_code,
         p_pin: pin,
       });
-      groups = groupByDay((hist ?? []) as PublicHistoryItem[]);
+      const row = (data as VerifiedSavings[] | null)?.[0] ?? null;
+      if (!row) {
+        pinError = 'PIN salah. Silakan coba lagi.';
+      } else {
+        savings = row;
+        const { data: hist } = await client.rpc('get_student_history', {
+          p_code: public_code,
+          p_pin: pin,
+        });
+        groups = groupByDay((hist ?? []) as PublicHistoryItem[]);
+        const { data: ekskulData } = await client.rpc('get_student_ekskul_history', {
+          p_code: public_code,
+          p_pin: pin,
+        });
+        ekskulHistory = (ekskulData ?? []) as StudentEkskulHistoryItem[];
+      }
     }
   }
-  }
 }
+
+const currentThursday = getThursdayOfWeek(new Date());
+const thisThursdayRecord = ekskulHistory.find((h) => h.payment_date === currentThursday);
+const thisThursdayStatus = thisThursdayRecord?.status ?? null;
+const unpaidRecords = ekskulHistory.filter((h) => h.status === 'unpaid');
+const unpaidCount = unpaidRecords.length;
+const unpaidAmount = unpaidCount * 3000;
 ---
 
 <Layout title={savings ? `${savings.full_name} — Tabungan SDN Klagen 1` : 'Lihat Tabungan — Tabungan SDN Klagen 1'}>
@@ -154,6 +174,58 @@ if (Astro.request.method === 'POST') {
               {formatRupiah(savings.total_withdrawal)}
             </p>
           </div>
+        </section>
+
+        <!-- Status Iuran Ekstrakurikuler -->
+        <section class="rounded-2xl card-soft p-5">
+          <div class="flex items-center justify-between border-b border-ink/10 pb-3">
+            <div>
+              <h2 class="font-semibold text-ink flex items-center gap-1.5">
+                <span>🎯</span> Iuran Ekstrakurikuler
+              </h2>
+              <p class="text-xs text-ink/60">Rp3.000 / pertemuan (Hari Kamis)</p>
+            </div>
+            <div class="text-right">
+              <span class="block text-[10px] uppercase tracking-wider text-ink/50">Kamis Ini</span>
+              <span class={`inline-block rounded-md px-2 py-0.5 text-xs font-semibold border ${getEkskulStatusBadge(thisThursdayStatus).class}`}>
+                {getEkskulStatusBadge(thisThursdayStatus).label}
+              </span>
+            </div>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between text-sm">
+            <span class="text-ink/70">Total Tunggakan:</span>
+            <span class:list={[
+              'font-semibold',
+              unpaidCount > 0 ? 'text-amber-700' : 'text-emerald-700',
+            ]}>
+              {unpaidCount > 0 ? `${formatRupiah(unpaidAmount)} (${unpaidCount}x pertemuan)` : 'Rp0 (Semua lunas)'}
+            </span>
+          </div>
+
+          {ekskulHistory.length > 0 && (
+            <div class="mt-4 border-t border-ink/10 pt-3">
+              <p class="mb-2 text-xs font-medium text-ink/60">Riwayat Pembayaran Ekskul</p>
+              <ul class="space-y-1.5">
+                {ekskulHistory.slice(0, 8).map((item) => {
+                  const badge = getEkskulStatusBadge(item.status);
+                  return (
+                    <li class="flex items-center justify-between rounded-xl bg-white p-2.5 text-xs border border-ink/5">
+                      <div>
+                        <span class="font-medium text-ink">{formatKamisLabel(item.payment_date)}</span>
+                        {item.note && <p class="text-[11px] text-ink/50 italic">{item.note}</p>}
+                      </div>
+                      <div class="text-right">
+                        <span class={`inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold border ${badge.class}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </section>
 
         <section>
