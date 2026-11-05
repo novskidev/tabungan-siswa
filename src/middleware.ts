@@ -45,6 +45,11 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     return ctx.redirect('/');
   }
 
+  // Khusus /guru/ekskul: hanya boleh diakses master atau guru pembina ekskul.
+  if (path.startsWith('/guru/ekskul') && profile.role !== 'master' && !profile.is_ekskul_teacher) {
+    return ctx.redirect('/guru');
+  }
+
   // Stash profile for the page frontmatter.
   ctx.locals.profile = profile;
   return next();

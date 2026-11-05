@@ -1,16 +1,22 @@
 ---
 interface Props {
   role: 'teacher' | 'master';
-  current: 'dashboard' | 'siswa' | 'transaksi' | 'guru-admin' | 'profil';
+  current: 'dashboard' | 'siswa' | 'transaksi' | 'guru-admin' | 'profil' | 'ekskul';
+  isEkskulTeacher?: boolean;
 }
 
-const { role, current } = Astro.props;
+const { role, current, isEkskulTeacher } = Astro.props;
 
 const links = [
   { key: 'dashboard', label: 'Dashboard', icon: '🏠', href: '/guru' },
   { key: 'siswa', label: 'Siswa', icon: '🧒', href: '/guru/siswa' },
   { key: 'transaksi', label: 'Transaksi', icon: '💰', href: '/guru/transaksi' },
 ];
+
+const ekskulLink =
+  role === 'master' || isEkskulTeacher
+    ? [{ key: 'ekskul', label: 'Ekskul', icon: '🎯', href: '/guru/ekskul' }]
+    : [];
 
 const masterLinks =
   role === 'master'
@@ -23,7 +29,7 @@ const masterLinks =
 
 <nav class="nav-pill mb-6 flex gap-1 p-1.5 text-sm">
   {
-    [...links, ...masterLinks].map((l) => (
+    [...links, ...ekskulLink, ...masterLinks].map((l) => (
       <a
         href={l.href}
         class:list={[
