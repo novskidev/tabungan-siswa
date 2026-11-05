@@ -264,3 +264,46 @@ end;
 $$;
 revoke all on function public.get_student_ekskul_history(text, text) from public;
 grant execute on function public.get_student_ekskul_history(text, text) to anon, authenticated;
+
+-- 8. pay_all_ekskul_arrears(p_student_id uuid)
+create or replace function public.pay_all_ekskul_arrears(p_student_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_role text;
+  v_is_ekskul boolean;
+  v_count integer;
+begin
+  if v_uid is null then
+    raise exception 'unauthenticated' using errcode = '42501';
+  end if;
+  select p.role, coalesce(p.is_ekskul_teacher, false)
+    into v_role, v_is_ekskul
+    from public.profiles p
+   where p.id = v_uid;
+
+  if v_role <> 'master' and not v_is_ekskul then
+    raise exception 'forbidden: pembina ekskul only' using errcode = '42501';
+  end if;
+
+  with updated as (
+    update public.ekskul_payments
+       set status = 'paid',
+           amount = 3000,
+           recorded_by = v_uid,
+           updated_at = now()
+     where student_id = p_student_id
+       and status = 'unpaid'
+    returning id
+  )
+  select count(*) into v_count from updated;
+
+  return v_count;
+end;
+$$;
+revoke all on function public.pay_all_ekskul_arrears(uuid) from public;
+grant execute on function public.pay_all_ekskul_arrears(uuid) to authenticated;
