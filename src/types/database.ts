@@ -68,3 +68,27 @@ export interface PublicHistoryItem {
   note: string | null;
   created_at: string;
 }
+
+export type EkskulStatus = 'paid' | 'unpaid' | 'absent';
+
+export interface EkskulPaymentRow {
+  id: string;
+  student_id: string;
+  payment_date: string;
+  status: EkskulStatus;
+  amount: number;
+  note: string | null;
+  recorded_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentEkskulHistoryItem {
+  id: string;
+  payment_date: string;
+  status: EkskulStatus;
+  amount: number;
+  note: string | null;
+  created_at: string;
+}
+
